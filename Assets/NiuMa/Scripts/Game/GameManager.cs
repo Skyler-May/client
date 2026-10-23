@@ -526,6 +526,7 @@ namespace NiuMa
                 if (_hallPanel != null)
                     _hallPanel.gameObject.SetActive(true);
                 _hall.gameObject.SetActive(true);
+                TryAutoEnterLaunchGame();
             }
             else
             {
@@ -537,11 +538,55 @@ namespace NiuMa
                 {
                     _hallPanel.gameObject.SetActive(true);
                     GameObject.Instantiate<GameObject>(prefab, _hallPanel);
+                    TryAutoEnterLaunchGame();
                 }
             }
-            // CreateDumbGame();
-            // XoGmwf8z8u
-            // EnterDumbGame("Zjv75Y6aj5");
+        }
+
+        /// <summary>
+        /// 聚合平台直达游戏
+        ///
+        /// 场景：Expo 大厅点「跑得快」→ 平台签发 token → H5 带 token+game 打开
+        ///      → 免登录成功后，**跳过大厅让玩家自己再点一次**，直接进目标游戏。
+        ///
+        /// 为什么要等大厅：游戏入口（GameEntry）是挂在大厅游戏卡片上的组件，
+        /// 大厅未实例化就没有可挂载的入口，因此必须在大厅加载完成后再触发。
+        ///
+        /// 兜底：找不到目标游戏时不报错、把玩家留在大厅（不至于白屏），
+        /// 并打印明确日志便于排查 game 参数是否与 NiuMa 游戏名一致。
+        /// </summary>
+        private void TryAutoEnterLaunchGame()
+        {
+            if (!LaunchParams.IsAggregated || !LaunchParams.HasTargetGame)
+                return;
+
+            string target = LaunchParams.Game;
+            Debug.Log("聚合启动：尝试直达游戏 " + target);
+
+            GameEntry[] entries = Resources.FindObjectsOfTypeAll<GameEntry>();
+            GameEntry matched = null;
+            for (int i = 0; i < entries.Length; i++)
+            {
+                GameEntry e = entries[i];
+                if (e == null)
+                    continue;
+                if (string.Equals(e._gameName, target, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(e._gameAlias, target, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = e;
+                    break;
+                }
+            }
+
+            if (matched != null)
+            {
+                Debug.Log("聚合启动：直达 " + matched._gameName);
+                matched.EnterDirectly();
+            }
+            else
+            {
+                Debug.LogWarning("聚合启动：未找到游戏 " + target + "，已留在大厅。可用的游戏名需与 GameEntry._gameName 一致");
+            }
         }
 
         private void CreateDumbGame()

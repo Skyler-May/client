@@ -1,21 +1,43 @@
 ﻿using System;
-using System.Threading;
 using System.Collections.Generic;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using UnityEngine;
 using MessagePack;
 
 namespace NiuMa
 {
+    /// <summary>
+    /// 对局服务器连接
+    ///
+    /// 职责：
+    ///  1. 维持与会话服的一条连接（TCP 或 WebSocket，由平台决定）
+    ///  2. MessagePack 编解码（粘包/半包处理）
+    ///  3. 发送队列串行化（保证消息不交叉）
+    ///
+    /// 传输层解耦（2026-10-24 改造）：
+    ///   原来直接 new Socket(TCP) 连接，导致 WebGL 平台不可用
+    ///   （浏览器禁止原生 Socket）。现改为依赖 ITransport 接口：
+    ///     · 原生平台 → TcpTransport
+    ///     · WebGL 平台 → WebSocketTransport
+    ///   编译期决定，运行期零分支。
+    ///
+    /// **业务零改动**：MessagePack 编解码、粘包处理、发送队列全部保持原逻辑。
+    /// </summary>
     public class Connection
     {
-        // 套接字
-        private Socket _socket = null;
-        public Socket Socket
+        /// <summary>传输层实现（由平台决定）</summary>
+        private ITransport _transport = null;
+
+        /// <summary>
+        /// 为兼容旧代码保留的 Socket 访问器
+        ///
+        /// 注意：WebGL 下没有 Socket，返回 null。
+        /// 新代码不应依赖此属性，改用 IsConnected / Send。
+        /// </summary>
+        [Obsolete("请改用 IsConnected / Send。WebGL 平台无 Socket。")]
+        public System.Net.Sockets.Socket Socket
         {
-            get { return _socket; }
+            get { return null; }
         }
 
         // 是否已经成功连接
@@ -24,19 +46,16 @@ namespace NiuMa
         // 是否主动关闭
         bool _activeClose = false;
 
-        // 线程锁
+        // 线程锁（保护发送队列；WebGL 单线程下也无害）
         object _lock = new object();
 
-        // 接收缓存
-        private byte[] _bufferReceive = null;
-
-        // 合并缓存
+        // 合并缓存（跨次接收的残留字节）
         private byte[] _bufferCompact = null;
 
         // 交换缓存
         private byte[] _bufferSwap = null;
 
-        // 接收缓存长度，固定为16KB
+        // 接收缓存长度
         public const int RECEIVE_LENGTH = 8192;
 
         // 解包数据缓存长度，固定为4MB
@@ -51,52 +70,38 @@ namespace NiuMa
             public byte[] _buf = null;
             public int _len = 0;
         }
-        private bool _sending = false;
+
+        // 发送队列
         private Queue<SendNode> _sendingQueue = new Queue<SendNode>();
+
+        // 是否正在发送
+        private bool _sending = false;
 
         public bool IsConnected()
         {
-            lock (_lock)
-            {
-                return _connected;
-            }
+            return _connected && _transport != null && _transport.IsConnected;
         }
 
         public void SetConnected(bool s)
         {
-            lock (_lock)
-            {
-                _connected = s;
-            }
+            _connected = s;
         }
 
         public bool IsActiveClose()
         {
-            lock (_lock)
-            {
-                return _activeClose;
-            }
+            return _activeClose;
         }
 
         private void SetActiveClose(bool s)
         {
-            lock (_lock)
-            {
-                _activeClose = s;
-                if (s)
-                {
-                    _connected = false;
-                    _sending = false;
-                    _sendingQueue.Clear();
-                }
-            }
+            _activeClose = s;
         }
 
         private void SetDisconnect()
         {
+            _connected = false;
             lock (_lock)
             {
-                _connected = false;
                 _sending = false;
                 _sendingQueue.Clear();
             }
@@ -106,87 +111,99 @@ namespace NiuMa
         {
             if (IsActiveClose())
                 return;
-            if (_socket != null)
+            SetActiveClose(true);
+            if (_transport != null)
             {
                 try
                 {
-                    SetActiveClose(true);
-                    _socket.Shutdown(SocketShutdown.Both);
-                    _socket.Close();
+                    _transport.Close();
                 }
-                catch
-                {}
+                catch { }
             }
+        }
+
+        /// <summary>
+        /// 创建传输层实现
+        ///
+        /// WebGL 用 WebSocket（浏览器原生），其余平台用 TCP。
+        /// 编译期决定，运行期无分支开销，也不会出现"某平台误用另一实现"。
+        /// </summary>
+        private ITransport CreateTransport()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            WebSocketReceiver.Ensure();
+            return new WebSocketTransport(WebSocketReceiver.GameObjectName);
+#else
+            return new TcpTransport();
+#endif
         }
 
         public void BeginConnect(string ip, int port)
         {
             SetActiveClose(false);
-            _socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            // 设置非阻塞
-            _socket.Blocking = false;
-            // 设置接收超时时间（单位：毫秒）
-            _socket.ReceiveTimeout = 3000;
-            // 设置发送超时时间（单位：毫秒）
-            _socket.SendTimeout = 3000;
-#if (UNITY_EDITOR || UNITY_STANDALONE || UNITY_IOS)
-            _socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, RECEIVE_LENGTH);
-            _socket.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, SocketOptionName.NoDelay, true);
-#elif UNITY_ANDROID
-            _socket.ReceiveBufferSize = RECEIVE_LENGTH;
-            _socket.NoDelay = true;
+
+            _transport = CreateTransport();
+
+            // ------------------------------------------------------------
+            // WebGL 端口适配
+            //
+            // 服务端下发的 port 是 TCP 端口（10086），而浏览器只能用 WebSocket（9098）。
+            // 二者是同一个 Session、同一套 MessagePack 帧，仅传输通道不同，
+            // 因此这里做一次端口映射即可，不需要服务端下发两套地址。
+            //
+            // 生产环境由 nginx 终结 TLS：wss://域名/ws → ws://内网:9098，
+            // 此时 ip 为域名、端口走 443（由部署配置决定，见 docs/webgl-h5-design.md）。
+            // ------------------------------------------------------------
+#if UNITY_WEBGL && !UNITY_EDITOR
+            port = WebSocketTransport.ResolveWsPort(ip, port);
 #endif
-            Debug.Log("Begin Connect");
-            _socket.BeginConnect(new IPEndPoint(IPAddress.Parse(ip), port), ConnectCallBack, this);
+
+            _transport.OnConnected += HandleTransportConnected;
+            _transport.OnData += HandleTransportData;
+            _transport.OnClosed += HandleTransportClosed;
+            _transport.OnConnectFailed += HandleTransportConnectFailed;
+
+            _transport.BeginConnect(ip, port);
         }
 
-        private static void ConnectCallBack(IAsyncResult ar)
+        // ============================================================
+        // 传输层事件处理（统一在主线程）
+        // ============================================================
+
+        private void HandleTransportConnected()
         {
-            UnityMainThreadDispatcher.Enqueue(() =>
-            {
-                // 在IL2CPP环境Unity日志必须在主线程打印才能正常显示
-                Debug.Log("Connect callback");
-            });
-            bool success = false;
-            string errMsg = null;
-            Connection con = null;
-            try
-            {
-                con = ar.AsyncState as Connection;
-                if (con != null)
-                    con.Socket.EndConnect(ar);
-                if (ar.IsCompleted)
-                {
-                    UnityMainThreadDispatcher.Enqueue(() =>
-                    {
-                        // 在IL2CPP环境Unity日志必须在主线程打印才能正常显示
-                        Debug.Log("Connect to server success");
-                    });
-                    success = true;
-                }
-            }
-            catch (System.Exception ex)
-            {
-                errMsg = "Connect to server error: " + ex.Message;
-                UnityMainThreadDispatcher.Enqueue(() =>
-                {
-                    // 在IL2CPP环境Unity日志必须在主线程打印才能正常显示
-                    Debug.LogError(errMsg);
-                });
-            }
-            if (con != null)
-                con.OnConnect(success, errMsg);
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL：把接收器绑定到本次连接
+            WebSocketReceiver.Bind(_transport as WebSocketTransport);
+#endif
+            SetConnected(true);
+            Debug.Log("Connect to server success");
+
+            // 与原有行为一致：连接成功也推一条 MsgConnect
+            OnConnect(true, null);
         }
+
+        private void HandleTransportData(byte[] data, int length)
+        {
+            OnReceiveData(data, length);
+        }
+
+        private void HandleTransportClosed(string reason)
+        {
+            OnDisconnect(reason);
+        }
+
+        private void HandleTransportConnectFailed(string errMsg)
+        {
+            OnConnect(false, errMsg);
+        }
+
+        // ============================================================
+        // 业务侧接口（保持与改造前完全一致）
+        // ============================================================
 
         public void OnConnect(bool success, string errMsg)
         {
-            if (success)
-            {
-                if (_bufferReceive == null)
-                    _bufferReceive = new byte[8192];
-                SetConnected(true);
-                _socket.BeginReceive(_bufferReceive, 0, 8192, SocketFlags.None, new AsyncCallback(ReceiveCallBack), this);
-            }
             MsgConnect msg = new MsgConnect();
             msg.succeed = success ? 1 : 0;
             msg.errMsg = errMsg;
@@ -196,11 +213,13 @@ namespace NiuMa
 
         public void OnDisconnect(string err)
         {
-            if (_socket == null)
+            if (_transport == null)
                 return;
-            _socket = null;
+            Close();
+            _transport = null;
             if (!IsActiveClose())
                 SetDisconnect();
+
             MsgDisconnect msg = new MsgDisconnect();
             msg.msg = err;
             MsgWrapper mw = MsgWrapper.PackMessage(msg);
@@ -209,14 +228,26 @@ namespace NiuMa
 
         public void OnConnectFailed()
         {
-            _socket = null;
+            _transport = null;
         }
 
-        private void UnpackMessage(int readCount)
+        // ============================================================
+        // 数据接收与解包
+        // ============================================================
+
+        /// <summary>
+        /// 收到一段数据（传输层已把数据拷贝出来，长度即有效字节数）
+        /// </summary>
+        private void OnReceiveData(byte[] data, int readCount)
+        {
+            UnpackMessage(data, readCount);
+        }
+
+        private void UnpackMessage(byte[] data, int readCount)
         {
             if (_bufferCompact == null)
                 _bufferCompact = new byte[BUFFER_LENGTH];
-            // 接收到数据包
+
             int totalCount = _bufferCount + readCount;
             if (totalCount > BUFFER_LENGTH)
             {
@@ -224,7 +255,6 @@ namespace NiuMa
 #if UNITY_EDITOR
                 UnityMainThreadDispatcher.Enqueue(() =>
                 {
-                    // 在IL2CPP环境Unity日志必须在主线程打印才能正常显示
                     Debug.LogError("网络接收缓冲区溢出");
                 });
 #endif
@@ -232,10 +262,12 @@ namespace NiuMa
                 _bufferCount = 0;
                 return;
             }
-            Buffer.BlockCopy(_bufferReceive, 0, _bufferCompact, _bufferCount, readCount);
+
+            Buffer.BlockCopy(data, 0, _bufferCompact, _bufferCount, readCount);
             _bufferCount = totalCount;
             totalCount = 0;
             int tmpCount = 0;
+
             while (_bufferCount > 0)
             {
                 try
@@ -250,9 +282,11 @@ namespace NiuMa
                 }
                 catch (Exception)
                 {
+                    // 数据不完整，等待后续字节（粘包/半包正常情况）
                     break;
                 }
             }
+
             if (totalCount > 0 && _bufferCount > 0)
             {
                 // 把数据移动到缓存开头
@@ -266,45 +300,9 @@ namespace NiuMa
             }
         }
 
-        private void OnReceive(int readCount)
-        {
-            UnpackMessage(readCount);
-            _socket.BeginReceive(_bufferReceive, 0, 8192, SocketFlags.None, new AsyncCallback(ReceiveCallBack), this);
-        }
-
-        private static void ReceiveCallBack(IAsyncResult ar)
-        {
-            int readCount = 0;
-            String err = "";
-            Connection con = null;
-            try
-            {
-                Socket socket = null;
-                con = ar.AsyncState as Connection;
-                if (con != null)
-                    socket = con.Socket;
-                if ((socket != null) && socket.Connected)
-                    readCount = socket.EndReceive(ar);
-            }
-            catch (System.Exception ex)
-            {
-                err = ex.Message;
-                if (string.IsNullOrEmpty(err))
-                    err = "Receive network packet error.";
-                UnityMainThreadDispatcher.Enqueue(() =>
-                {
-                    // 在IL2CPP环境Unity日志必须在主线程打印才能正常显示
-                    Debug.LogError(err);
-                });
-            }
-            if (con != null)
-            {
-                if (readCount == 0)
-                    con.OnDisconnect(err);
-                else
-                    con.OnReceive(readCount);
-            }
-        }
+        // ============================================================
+        // 发送
+        // ============================================================
 
         private bool IsSending()
         {
@@ -372,44 +370,40 @@ namespace NiuMa
                 SendHeadNode();
         }
 
+        /// <summary>
+        /// 发送队列串行化
+        ///
+        /// 与原实现差异：TCP 异步回调会驱动下一条发送；
+        /// 而 WebSocket 的 send 是同步入队（浏览器负责缓冲），
+        /// 因此这里统一改为「同步逐条发出」，两种传输行为一致。
+        /// </summary>
         private void SendHeadNode()
         {
-            SendNode node = PopSendingNode();
-            if (node == null)
+            if (_transport == null)
+            {
                 SetSending(false);
-            else
-                _socket.BeginSend(node._buf, 0, node._len, SocketFlags.None, new AsyncCallback(SendCallback), this);
-        }
+                return;
+            }
 
-        public static void SendCallback(IAsyncResult ar)
-        {
-            int sendCount = 0;
-            String err = "";
-            Connection con = null;
-            try
+            SetSending(true);
+            while (true)
             {
-                con = ar.AsyncState as Connection;
-                if (con != null)
-                    sendCount = con.Socket.EndSend(ar);
-            }
-            catch (System.Exception ex)
-            {
-                err = ex.Message;
-                if (string.IsNullOrEmpty(err))
-                    err = "Send package failed.";
-                UnityMainThreadDispatcher.Enqueue(() =>
+                SendNode node = PopSendingNode();
+                if (node == null)
+                    break;
+                try
                 {
-                    // 在IL2CPP环境Unity日志必须在主线程打印才能正常显示
-                    Debug.LogError(err);
-                });
+                    _transport.Send(node._buf, 0, node._len);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError("Send package failed: " + ex.Message);
+                    OnDisconnect(ex.Message);
+                    SetSending(false);
+                    return;
+                }
             }
-            if (con != null)
-            {
-                if (sendCount == 0)
-                    con.OnDisconnect(err);
-                else
-                    con.SendHeadNode();
-            }
+            SetSending(false);
         }
     }
 }

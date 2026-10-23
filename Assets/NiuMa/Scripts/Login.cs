@@ -83,6 +83,19 @@ public class Login : MonoBehaviour
     {
         GameManager.Instance.Login = gameObject;
 
+        // ================================================================
+        // 聚合平台模式（WebGL）：URL 带 token → 免登录
+        //
+        // 优先级最高：平台下发的 token 是最新的，且玩家在聚合端已登录过，
+        // 不应再要求输入账号密码（浏览器里输账号体验不可接受）。
+        // ================================================================
+        if (LaunchParams.IsAggregated)
+        {
+            GameManager.Instance.Token = LaunchParams.Token;
+            GetPlayerInfo();
+            return;
+        }
+
         string token = null;
 #if (UNITY_EDITOR || UNITY_ANDROID || UNITY_IOS)
         token = PlayerPrefs.GetString("token");

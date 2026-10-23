@@ -67,6 +67,9 @@ public class GameEntry : MonoBehaviour
     {
 #if UNITY_EDITOR
         EnterGame();
+#elif UNITY_WEBGL
+        // WebGL 无 AssetBundle 热更（全部资源打包在 .data 里），直接进入
+        EnterGame();
 #elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
         if (_downloading)
             return;
@@ -89,6 +92,17 @@ public class GameEntry : MonoBehaviour
         else
             EnterGame();
 #endif
+    }
+
+    /// <summary>
+    /// 聚合平台直达：不解压、不判断更新，直接进指定游戏
+    ///
+    /// 由 GameManager 在大厅加载完成后调用（见 TryAutoEnterLaunchGame），
+    /// 保证「Expo 点游戏 → 免登录 → 直达该游戏」，不经过大厅点击。
+    /// </summary>
+    public void EnterDirectly()
+    {
+        EnterGame();
     }
 
 #if UNITY_EDITOR
