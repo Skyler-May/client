@@ -137,6 +137,14 @@ namespace NiuMa
             if (!_initialized || _recording)
                 return;
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL 不支持 Unity 的 Microphone API，也没有 lame 原生库，
+            // 语音消息在 H5 端不可用。这里直接拒绝并明确提示，
+            // 避免后续流程拿到空 AudioClip 后崩溃。
+            Debug.LogWarning("WebGL 平台不支持语音录制，已忽略");
+            return;
+#endif
+
             _abort = false;
             _recording = true;
             _recordedClip = Microphone.Start(null, false, 60, 11025);
@@ -149,6 +157,12 @@ namespace NiuMa
         {
             if (!_recording)
                 return;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // 与 StartRecord 对应：WebGL 下不会进入录制状态，这里直接返回
+            _recording = false;
+            return;
+#endif
 
             _abort = abort;
             _recording = false;

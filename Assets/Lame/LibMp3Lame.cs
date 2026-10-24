@@ -693,6 +693,23 @@ namespace NAudio.Lame.DLL
             const string libname = @"mp3lame";
 #elif UNITY_STANDALONE_WIN //添加Windows平台宏，否则打PC包会报找不到libmp3lame.dll
             const string libname = @"libmp3lame.dll";
+#elif UNITY_WEBGL
+            // ============================================================
+            // WebGL 平台桩（2026-10-25 为聚合平台 H5 构建补充）
+            //
+            // 背景：WebGL 浏览器沙箱无法加载原生 .dll/.so，本项目也没有
+            // 编译 lame 的 WebAssembly 版本。缺少本分支会导致整个项目
+            // 编译失败（CS0103: 'libname' 不存在），从而阻塞 WebGL 构建。
+            //
+            // 处理：保留常量让代码编译通过，但**运行时不可用**。
+            // 语音功能（VoiceManager）在 WebGL 下应由 VoiceManager 主动禁用，
+            // 不要真正调用到这里——若被调用会抛 DllNotFoundException，
+            // 由 VoiceManager 捕获后提示"当前平台不支持语音"。
+            //
+            // 后续若要支持 WebGL 语音：改用浏览器 MediaRecorder + Web Audio API，
+            // 不经过 lame。
+            // ============================================================
+            const string libname = @"__lame_webgl_unavailable";
 #endif
 
             // typedef void (*lame_report_function)(const char *format, va_list ap);
