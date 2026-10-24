@@ -516,10 +516,14 @@ public class Login : MonoBehaviour
         if (bg == null)
             return;
         string resName = "Sounds/Main/bg_login";
+        UnityEngine.Object obj = null;
 #if (UNITY_EDITOR || UNITY_STANDALONE)
-        UnityEngine.Object obj = Resources.Load(resName);
+        obj = Resources.Load(resName);
+#elif UNITY_WEBGL
+        // WebGL 无 AssetBundle 热更（资源打包在 .data 中），走 Resources 加载
+        obj = Resources.Load(resName);
 #elif (UNITY_ANDROID || UNITY_IOS)
-        UnityEngine.Object obj = ResourceManager.Instance.LoadResource(resName, "sounds/main.ab", "Assets/NiuMa/Resources/", ".mp3");
+        obj = ResourceManager.Instance.LoadResource(resName, "sounds/main.ab", "Assets/NiuMa/Resources/", ".mp3");
 #endif
         AudioClip clip = obj as AudioClip;
         if (clip != null)

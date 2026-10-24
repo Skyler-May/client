@@ -852,13 +852,18 @@ namespace NiuMa
 
         public bool IsGameLoaded(string name)
         {
-#if (UNITY_EDITOR || UNITY_STANDALONE)
+#if (UNITY_EDITOR || UNITY_STANDALONE || UNITY_WEBGL)
+            // WebGL 与 Standalone 一样：资源全部打包在 .data 里，无需热更检查，
+            // 视为始终已加载（原代码缺 WebGL 分支会导致 CS0161 缺少 return）
             return true;
 #elif (UNITY_ANDROID || UNITY_IOS)
             if (string.IsNullOrEmpty(name))
                 return false;
 
             return _gameLoaded.Contains(name);
+#else
+            // 兜底：未知平台一律视为已加载，避免编译期缺少返回值
+            return true;
 #endif
         }
 

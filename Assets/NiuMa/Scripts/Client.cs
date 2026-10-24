@@ -104,7 +104,9 @@ public class Client : MonoBehaviour
 
         GameManager.Instance.Update();
 
-#if (UNITY_EDITOR || UNITY_STANDALONE)
+#if (UNITY_EDITOR || UNITY_STANDALONE || UNITY_WEBGL)
+        // WebGL：资源打包在 .data 中，没有 AssetBundle 热更与内存回收逻辑，
+        // 因此不调用 ResourceManager.Update()（该方法在 WebGL 下不编译）
 #else
         LocationCoroutine();
         ResourceManager.Instance.Update();

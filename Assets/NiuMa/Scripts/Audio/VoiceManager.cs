@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -90,6 +90,11 @@ namespace NiuMa
         {
             if (_initialized)
                 return;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL 没有 Unity Microphone API，语音功能整体不可用。
+            // 不弹错提示（H5 端本来就没这功能），只记录一次日志。
+            Debug.Log("[WebGL] 语音功能不可用（浏览器环境不支持 Microphone API）");
+#else
             string[] devices = Microphone.devices;
             if (devices.Length == 0)
             {
@@ -98,6 +103,7 @@ namespace NiuMa
                 return;
             }
             _initialized = true;
+#endif
         }
 
         [BlackList]
@@ -147,7 +153,9 @@ namespace NiuMa
 
             _abort = false;
             _recording = true;
+#if !UNITY_WEBGL || UNITY_EDITOR
             _recordedClip = Microphone.Start(null, false, 60, 11025);
+#endif
             AudioManager.Instance.StartRecord();
             foreach (RecorderListener rec in _recorders)
                 rec.OnRecordStart();
@@ -166,8 +174,10 @@ namespace NiuMa
 
             _abort = abort;
             _recording = false;
+#if !UNITY_WEBGL || UNITY_EDITOR
             int position = Microphone.GetPosition(null);
             Microphone.End(null);
+#endif
             AudioManager.Instance.StopRecord();
             foreach (RecorderListener rec in _recorders)
                 rec.OnRecordStop();
