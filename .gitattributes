@@ -1,0 +1,124 @@
+# Unity 项目换行符与二进制规范
+#
+# 为什么需要：Unity 在 Windows 上打开项目后会批量改写文本文件的换行符
+# （CRLF↔LF），导致 git status 出现数千个「只差换行符」的假 diff。
+# 更严重的是 .meta 文件记录资源 GUID，换行符反复变化会让引用链不稳定，
+# 容易出现 prefab 丢引用。这里统一锁定策略，任何人 clone 后行为一致。
+
+# 默认：文本文件统一 LF 入库，检出时也用 LF（Unity 可正常处理）
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------------
+# Unity 资源与场景：一律按二进制处理，禁止任何换行符/编码转换
+# ---------------------------------------------------------------------------
+*.unity binary
+*.asset binary
+*.prefab binary
+*.mat binary
+*.controller binary
+*.anim binary
+*.overrideController binary
+*.physicMaterial binary
+*.physicsMaterial2D binary
+*.cubemap binary
+*.flare binary
+*.guiskin binary
+*.mask binary
+*.renderTexture binary
+*.spriteatlas binary
+*.spriteatlasv2 binary
+*.terrainlayer binary
+*.lighting binary
+*.mixer binary
+*.shadervariants binary
+*.preset binary
+*.signal binary
+*.playable binary
+
+# .meta 必须保持纯文本 LF（GUID 引用依赖它）
+*.meta text eol=lf
+
+# ---------------------------------------------------------------------------
+# 二进制媒体与库
+# ---------------------------------------------------------------------------
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.psd binary
+*.tga binary
+*.bmp binary
+*.tif binary
+*.tiff binary
+*.exr binary
+*.hdr binary
+*.iff binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.aiff binary
+*.mp4 binary
+*.mov binary
+*.webm binary
+*.ttf binary
+*.otf binary
+*.fnt binary
+*.ttc binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.a binary
+*.lib binary
+*.exp binary
+*.pdb binary
+*.mdb binary
+*.exe binary
+*.bundle binary
+*.ab binary
+*.unity3d binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.7z binary
+*.rar binary
+*.jar binary
+*.aar binary
+*.keystore binary
+*.jks binary
+
+# ---------------------------------------------------------------------------
+# 代码与配置：文本 LF
+# ---------------------------------------------------------------------------
+*.cs text eol=lf
+*.shader text eol=lf
+*.cginc text eol=lf
+*.hlsl text eol=lf
+*.compute text eol=lf
+*.js text eol=lf
+*.jslib text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.lua text eol=lf
+
+# ---------------------------------------------------------------------------
+# 构建产物与 IDE 文件：不纳入版本库
+# ---------------------------------------------------------------------------
+Library/** -text -diff linguist-vendored
+Temp/** -text -diff linguist-vendored
+Obj/** -text -diff linguist-vendored
+Logs/** -text -diff linguist-vendored
+UserSettings/** -text -diff linguist-vendored
+*.csproj -text -diff linguist-generated
+*.sln -text -diff linguist-generated
+*.user -text -diff
+*.pidb -text -diff
+*.booproj -text -diff
+*.svd -text -diff
+*.pdb -text -diff
+*.mdb -text -diff
+*.opendb -text -diff
+*.VC.db -text -diff
