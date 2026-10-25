@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -23,7 +23,7 @@ namespace NiuMa
         }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         // 游戏表，Key为游戏名称，Value为该游戏所依赖的全部AssetBundle
         private Dictionary<string, HashSet<string>> _gameAssetBundles = new Dictionary<string, HashSet<string>>();
 

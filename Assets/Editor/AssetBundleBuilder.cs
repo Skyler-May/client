@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
@@ -54,11 +54,32 @@ public class AssetBundleBuilder
         BuildLuaScripts(BuildTarget.StandaloneWindows64);
     }
 
+    // ------------------------------------------------------------------
+    // WebGL：聚合平台（Expo WebView）用的 H5 客户端
+    //
+    // WebGL 没有本地文件系统，AssetBundle 不在本地缓存，
+    // 而是由静态服务器提供、运行时用 UnityWebRequest 下载。
+    // 因此这里只需产出 .ab + files.txt + Dependencies.xml，
+    // 部署到 H5 站点的 AssetBundle/ 目录即可。
+    // ------------------------------------------------------------------
+    [MenuItem("Assets/AssetBundleBuilder/WebGL Resources")]
+    public static void BuildWebGLResources()
+    {
+        BuildResources(BuildTarget.WebGL);
+    }
+
+    [MenuItem("Assets/AssetBundleBuilder/WebGL LuaScripts")]
+    public static void BuildWebGLLuaScripts()
+    {
+        BuildLuaScripts(BuildTarget.WebGL);
+    }
+
     private static void BuildResources(BuildTarget targetPlatform)
     {
         if (targetPlatform != BuildTarget.Android &&
             targetPlatform != BuildTarget.iOS &&
-            targetPlatform != BuildTarget.StandaloneWindows64)
+            targetPlatform != BuildTarget.StandaloneWindows64 &&
+            targetPlatform != BuildTarget.WebGL)
         {
             Debug.LogError("打包AssetBundle错误，目标平台不支持");
             return;
@@ -70,6 +91,8 @@ public class AssetBundleBuilder
             outPath += "ios";
         else if (targetPlatform == BuildTarget.StandaloneWindows64)
             outPath += "windows";
+        else if (targetPlatform == BuildTarget.WebGL)
+            outPath += "webgl";
         if (!Directory.Exists(outPath))
             Directory.CreateDirectory(outPath);
         AssetBundleManifest manifest = BuildPipeline.BuildAssetBundles(outPath, BuildAssetBundleOptions.None, targetPlatform);
@@ -94,7 +117,8 @@ public class AssetBundleBuilder
     {
         if (targetPlatform != BuildTarget.Android &&
             targetPlatform != BuildTarget.iOS &&
-            targetPlatform != BuildTarget.StandaloneWindows64)
+            targetPlatform != BuildTarget.StandaloneWindows64 &&
+            targetPlatform != BuildTarget.WebGL)
         {
             Debug.LogError("打包AssetBundle错误，目标平台不支持");
             return;
@@ -125,6 +149,8 @@ public class AssetBundleBuilder
             outPath += "iOS";
         else if (targetPlatform == BuildTarget.StandaloneWindows64)
             outPath += "windows";
+        else if (targetPlatform == BuildTarget.WebGL)
+            outPath += "webgl";
         if (!Directory.Exists(outPath))
             Directory.CreateDirectory(outPath);
         AssetBundleManifest manifest = BuildPipeline.BuildAssetBundles(outPath, buildMap.ToArray(), BuildAssetBundleOptions.None, targetPlatform);
@@ -154,7 +180,19 @@ public class AssetBundleBuilder
 
         try
         {
+            // 配置文件位置：历史上放在项目根目录 AssetBundle/ 下，
+            // 但本仓库实际放在 Assets/Resources/AssetBundle.xml。
+            // 先找实际位置，都没有才报错，避免「目录不存在」直接抛异常。
             string path = Application.dataPath + "/../AssetBundle/AssetBundle.xml";
+            if (!File.Exists(path))
+                path = Application.dataPath + "/Resources/AssetBundle.xml";
+            if (!File.Exists(path))
+            {
+                Debug.LogError("AssetBundle 配置不存在，已尝试: " +
+                    Application.dataPath + "/../AssetBundle/AssetBundle.xml 和 " +
+                    Application.dataPath + "/Resources/AssetBundle.xml");
+                return false;
+            }
             XmlDocument xml = new XmlDocument();
             xml.Load(path);
             XmlElement root = xml.DocumentElement;

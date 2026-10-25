@@ -1,4 +1,4 @@
 {
-  "httpHost": "http://192.168.6.220:18080",
-  "assetBundleHost": "http://192.168.6.220:6868/asset-bundle/"
+  "httpHost": "http://192.168.3.83:18080",
+  "assetBundleHost": "http://192.168.3.83:8088/asset-bundle/"
 }

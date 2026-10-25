@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
@@ -16,7 +16,8 @@ namespace NiuMa
 #if UNITY_EDITOR
             string resName = "LuaScripts/" + fileName;
             obj = Resources.Load(resName);
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
+            // WebGL 同样从 luascripts.ab 里读 Lua（该包已随基础包预加载进内存）
             obj = ResourceManager.Instance.LoadResource(fileName, "luascripts.ab");
 #endif
             TextAsset text = obj as TextAsset;

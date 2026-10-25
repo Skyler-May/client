@@ -127,7 +127,7 @@ namespace NiuMa
         // ============================================================
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        [System.Runtime.InteropServices.DllImport("__Internal")]
+        [System.Runtime.InteropServices.DllImport("__Internal", EntryPoint = "NiuMaWS_Free")]
         private static extern void NiuMaWS_Free(int ptr);
 
         private static byte[] ReadAndFree(int ptr, int len)

@@ -198,13 +198,15 @@ namespace NiuMa
     /// </summary>
     internal static class NiuMaWS
     {
-        [DllImport("__Internal")]
+        // EntryPoint 必须与 jslib 导出的函数名严格一致（NiuMaWS_ 前缀），
+        // 否则 IL2CPP 链接阶段会报 undefined symbol: Connect / Send / Close
+        [DllImport("__Internal", EntryPoint = "NiuMaWS_Connect")]
         public static extern int Connect(string url, string receiverGameObject);
 
-        [DllImport("__Internal")]
+        [DllImport("__Internal", EntryPoint = "NiuMaWS_Send")]
         public static extern void Send(int handle, byte[] data, int offset, int count);
 
-        [DllImport("__Internal")]
+        [DllImport("__Internal", EntryPoint = "NiuMaWS_Close")]
         public static extern void Close(int handle);
     }
 #endif

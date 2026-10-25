@@ -68,7 +68,14 @@ namespace NiuMa
                     int eq = pair.IndexOf('=');
                     if (eq <= 0) continue;
                     string key = pair.Substring(0, eq);
-                    string val = Uri.UnescapeDataString(pair.Substring(eq + 1));
+                    string raw = pair.Substring(eq + 1);
+
+                    // URL 解码：query 里的 '+' 表示空格（application/x-www-form-urlencoded），
+                    // 而 Uri.UnescapeDataString 不会把 '+' 转成空格，
+                    // 导致 token 变成 "Bearer+eyJ..." 而不是 "Bearer eyJ..."，
+                    // 服务端取到带加号的 token → 认证失败。
+                    // 因此先把 '+' 换成 %20 再解码。
+                    string val = Uri.UnescapeDataString(raw.Replace("+", "%20"));
                     if (key == "token") Token = val;
                     else if (key == "game") Game = val;
                 }

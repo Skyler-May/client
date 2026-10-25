@@ -181,6 +181,7 @@ namespace NiuMa
             AudioManager.Instance.StopRecord();
             foreach (RecorderListener rec in _recorders)
                 rec.OnRecordStop();
+#if !UNITY_WEBGL || UNITY_EDITOR
             if (_recordedClip != null)
             {
                 string fileName = DateTime.Now.ToString("MMddHHmm");
@@ -191,6 +192,10 @@ namespace NiuMa
                     lis.OnRecordCompleted(fileName);
                 _recordedClip = null;
             }
+#else
+            // WebGL：不会进入录制状态，这里无需保存逻辑
+            _recordedClip = null;
+#endif
         }
 
         public void PushVoice(string fileName, int seat)

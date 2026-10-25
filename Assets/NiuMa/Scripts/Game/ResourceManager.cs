@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Xml;
 using UnityEngine;
+using UnityEngine.Networking;
 using XLua;
 
 namespace NiuMa
@@ -38,7 +39,7 @@ namespace NiuMa
         }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         // 远程AssetBundle哈希映射表
         private Dictionary<string, string> _remoteHashes = new Dictionary<string, string>();
 
@@ -60,8 +61,15 @@ namespace NiuMa
 
         public static string GetLocalAssetBundlePath()
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL 没有可写的本地文件系统（persistentDataPath 仅内存虚拟盘，
+            // 且跨刷新不保留），AssetBundle 全部走 HTTP 下载 + 内存缓存。
+            // 返回空串，调用方据此跳过所有本地文件操作。
+            return string.Empty;
+#else
             string localPath = Application.persistentDataPath + "/AssetBundle/";
             return localPath;
+#endif
         }
 
         public Dictionary<string, string> GetRemoteHashes()
@@ -129,6 +137,10 @@ namespace NiuMa
         // 加载本地哈希表
         public void LoadLocalHashes()
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL：无本地哈希文件，_localHashes 保持空 -> 所有 AB 视为需要下载
+            return;
+#endif
             string localPath = GetLocalAssetBundlePath();
             string file = localPath + "files.txt";
             if (File.Exists(file))
@@ -142,6 +154,10 @@ namespace NiuMa
         // 保存本地哈希表
         public void SaveLocalHashes()
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL：哈希只保存在内存字典中，不落盘（每次会话重新下载校验）
+            return;
+#endif
             string localPath = GetLocalAssetBundlePath();
             string file = localPath + "files.txt";
             if (File.Exists(file))
@@ -253,6 +269,15 @@ namespace NiuMa
                 ab = _assetBundles[name];
             else
             {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                // WebGL：不读本地文件。AB 必须已被 DownloadAssetBundlesFromWebGL
+                // 预先下载进 _assetBundles。走到这里说明调用方没提前加载依赖。
+                Debug.LogErrorFormat(
+                    "[WebGL] AssetBundle \"{0}\" 未预加载。请先调用 " +
+                    "ResourceManager.DownloadAssetBundlesFromWebGL 下载该游戏的依赖包。",
+                    name);
+                ab = null;
+#else
                 string path = GetLocalAssetBundlePath();
                 path = path + name;
                 if (File.Exists(path))
@@ -264,6 +289,7 @@ namespace NiuMa
                 }
                 else
                     Debug.LogErrorFormat("Load asset bundle \"{0}\" failed.", name);
+#endif
             }
             if (ab != null)
             {
@@ -303,7 +329,7 @@ namespace NiuMa
             {
 #if UNITY_EDITOR
                 // 编辑器仅支持Resources.Load
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
                 // Android及IOS支持AssetBundle
                 string name = path;
                 if (name.Length > 0)
@@ -326,7 +352,7 @@ namespace NiuMa
         }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         public void Update()
         {
             _interval += Time.unscaledDeltaTime;
@@ -359,6 +385,130 @@ namespace NiuMa
                 _assetBundles.Remove(name);
                 _accessTimes.Remove(name);
             }
+        }
+#endif
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // ==================================================================
+        // WebGL 资源加载：按需下载 AssetBundle 到内存
+        //
+        // 设计要点（为「一个厂商几十款游戏」的可扩展性）：
+        //   1. 按需加载：点某款游戏时才下载该游戏的 AB，而不是全量预载。
+        //      本地 3 款时全量才 64MB，几十款时会到 GB 级，必须按需。
+        //   2. 依赖驱动：AB 列表来自 Dependencies.xml，
+        //      新增游戏只要重新打包生成清单，本代码无需改动。
+        //   3. 内存缓存：下载过的 AB 存在 _assetBundles，
+        //      之后 LoadResource 走原有同步路径，调用方零改动。
+        //   4. 并发下载：同一批 AB 并行请求，缩短等待。
+        // ==================================================================
+
+        /// <summary>
+        /// 下载并加载指定的一批 AssetBundle 到内存（协程）
+        /// </summary>
+        /// <param name="abNames">AssetBundle 名称列表，如 prefabs/biji.ab</param>
+        /// <param name="onProgress">进度回调（0~1）</param>
+        /// <param name="onDone">完成回调，参数为是否全部成功</param>
+        public IEnumerator DownloadAssetBundlesFromWebGL(
+            List<string> abNames,
+            Action<float> onProgress,
+            Action<bool> onDone)
+        {
+            if (abNames == null || abNames.Count == 0)
+            {
+                if (onDone != null) onDone(true);
+                yield break;
+            }
+
+            // 过滤掉已经加载过的
+            List<string> pending = new List<string>();
+            foreach (string name in abNames)
+            {
+                if (string.IsNullOrEmpty(name))
+                    continue;
+                if (_assetBundles.ContainsKey(name))
+                    continue;
+                pending.Add(name);
+            }
+
+            if (pending.Count == 0)
+            {
+                Debug.Log("[WebGL] 所有 AssetBundle 已缓存，无需下载");
+                if (onProgress != null) onProgress(1.0f);
+                if (onDone != null) onDone(true);
+                yield break;
+            }
+
+            Debug.LogFormat("[WebGL] 需下载 {0} 个 AssetBundle", pending.Count);
+
+            int done = 0;
+            int failed = 0;
+            float totalBytes = 0f;
+
+            // 逐个下载（UnityWebRequest 自身并发能力有限，串行更稳定；
+            // 若后续要提速，可改为分批并发）
+            foreach (string name in pending)
+            {
+                string url = AssetBundleHost + name;
+                UnityWebRequest req = UnityWebRequestAssetBundle.GetAssetBundle(url);
+                yield return req.SendWebRequest();
+
+                if (req.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogErrorFormat("[WebGL] 下载 AssetBundle \"{0}\" 失败: {1}", name, req.error);
+                    failed++;
+                }
+                else
+                {
+                    AssetBundle ab = DownloadHandlerAssetBundle.GetContent(req);
+                    if (ab == null)
+                    {
+                        Debug.LogErrorFormat("[WebGL] AssetBundle \"{0}\" 下载成功但解析失败", name);
+                        failed++;
+                    }
+                    else
+                    {
+                        _assetBundles[name] = ab;
+                        _accessTimes[name] = DateTime.Now;
+                        Debug.LogFormat("[WebGL] AssetBundle \"{0}\" 加载成功", name);
+                    }
+                }
+
+                done++;
+                totalBytes += req.downloadedBytes;
+                if (onProgress != null)
+                    onProgress((float)done / pending.Count);
+
+                req.Dispose();
+            }
+
+            Debug.LogFormat("[WebGL] 加载完成: 成功={0} 失败={1} 总流量={2:F1}KB",
+                pending.Count - failed, failed, totalBytes / 1024f);
+
+            if (onDone != null)
+                onDone(failed == 0);
+        }
+
+        /// <summary>
+        /// 确保基础包已就绪（common / 大厅 / 游戏列表）
+        /// 这些是进入任何界面前都需要的，启动时统一加载
+        /// </summary>
+        public static List<string> GetBaseAssetBundles()
+        {
+            return new List<string>
+            {
+                "common.ab",
+                "gamelist.ab",
+                "luascripts.ab",
+                "hall/main.ab",
+                "hall/dialogs.ab",
+                "images/main.ab",
+                "images/chat.ab",
+                "images/emojis.ab",
+                "prefabs/common.ab",
+                "prefabs/hall.ab",
+                "prefabs/gamelist.ab",
+                "sounds/main.ab",
+            };
         }
 #endif
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -47,7 +47,7 @@ public class Load : MonoBehaviour
     public Client _client = null;
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private List<string> _mainAssetBundles = new List<string>();
     private List<string> _newAssetBundles = new List<string>();
     private int _current = 0;
@@ -88,8 +88,24 @@ public class Load : MonoBehaviour
     /// </summary>
     private void LoadConfig()
     {
+        // WebGL（聚合平台 H5）：配置走「同源相对路径」，
+        // 由承载 H5 的站点提供 /config.json，天然适配任意环境
+        // （本机 / 测试服 / 生产 / 不同厂商），无需重新打包。
+        // 原生端保持原有远端地址不变。
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL：配置放在承载 H5 的站点根目录，与页面同源。
+        // 注意必须用绝对 URL —— UnityWebRequest 在 WebGL 下不支持相对路径
+        // （相对路径没有基准，直接报 Unknown Error）。
+        // Application.absoluteURL 形如 http://host:port/index.html，
+        // 取其目录部分再拼 config.json。
+        string pageUrl = Application.absoluteURL;
+        int slash = pageUrl.LastIndexOf('/');
+        string baseUrl = slash > 0 ? pageUrl.Substring(0, slash + 1) : pageUrl;
+        string url = baseUrl + "config.json";
+        Debug.Log("[WebGL] 加载配置: " + url);
+#else
         const string url = "https://gzyx.oss-cn-shenzhen.aliyuncs.com/config.json";
-        //const string url = "http://192.168.6.220:8088/niuma/config.json";
+#endif
         HttpRequester.Instance.Get(url, null, OnLoadConfig);
     }
 
@@ -115,6 +131,8 @@ public class Load : MonoBehaviour
                     assetBundleHost = assetBundleHost + "android/";
 #elif UNITY_IOS
                     assetBundleHost = assetBundleHost + "ios/";
+#elif UNITY_WEBGL
+                    assetBundleHost = assetBundleHost + "webgl/";
 #endif
                 }
                 if (string.IsNullOrEmpty(httpHost) || string.IsNullOrEmpty(assetBundleHost))
@@ -146,7 +164,7 @@ public class Load : MonoBehaviour
     {
 #if UNITY_EDITOR
         LoadComplete();
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         string localPath = ResourceManager.GetLocalAssetBundlePath();
         if (localPath.Length > 0)
         {
@@ -165,7 +183,7 @@ public class Load : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private void DownloadHashFile()
     {
         string url = ResourceManager.Instance.AssetBundleHost + "files.txt";
@@ -251,6 +269,13 @@ public class Load : MonoBehaviour
                 GameManager.Instance.ShowPromptDialog(errMsg);
                 return;
             }
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL 没有本地文件系统，无法做「是否过期」判断，
+            // 且基础包必须在进入大厅前全部加载进内存（_assetBundles 字典），
+            // 否则后续同步的 LoadResource 会全部失败。
+            // 因此这里直接走内存预加载：一次性下载清单里的全部基础包。
+            StartCoroutine(DownloadMainAssetBundlesForWebGL());
+#else
             _newAssetBundles.Clear();
             foreach (string ab in _mainAssetBundles)
             {
@@ -259,6 +284,7 @@ public class Load : MonoBehaviour
             }
             // 开始下载新的ab
             DownloadNextAssetBundle();
+#endif
         }
         else
         {
@@ -267,6 +293,46 @@ public class Load : MonoBehaviour
             GameManager.Instance.ShowPromptDialog(errMsg);
         }
     }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    /// <summary>
+    /// WebGL：把主清单里的基础包全部下载进内存，完成后再进入大厅。
+    /// 这是「全量加载好，前端直接渲染」的实现——不边下边渲染。
+    /// </summary>
+    private System.Collections.IEnumerator DownloadMainAssetBundlesForWebGL()
+    {
+        List<string> list = new List<string>(_mainAssetBundles);
+        Debug.LogFormat("[WebGL] 大厅基础包 {0} 个，开始预加载", list.Count);
+
+        bool ok = false;
+        yield return ResourceManager.Instance.DownloadAssetBundlesFromWebGL(
+            list,
+            (progress) =>
+            {
+                // 预加载占用 5%~95% 的进度区间
+                float ratio = 0.05f + progress * 0.90f;
+                if (_progress != null)
+                    _progress.value = ratio;
+                if (_percent != null)
+                    _percent.text = Mathf.RoundToInt(ratio * 100f) + "%";
+            },
+            (success) => { ok = success; });
+
+        if (ok)
+        {
+            Debug.Log("[WebGL] 大厅基础包预加载完成");
+            // 与原生流程收尾一致：继续下载游戏清单 → LoadComplete
+            // （原生路径里 OnDownloadComplete 并不存在，实际是 DownloadGameManifest）
+            DownloadGameManifest();
+        }
+        else
+        {
+            const string errMsg = "游戏资源预加载失败，请检查网络后重试";
+            Debug.LogError(errMsg);
+            GameManager.Instance.ShowPromptDialog(errMsg);
+        }
+    }
+#endif
 
     private void DownloadNextAssetBundle()
     {
