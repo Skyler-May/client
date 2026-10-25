@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
@@ -557,37 +557,70 @@ namespace NiuMa
         /// </summary>
         private void TryAutoEnterLaunchGame()
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // 仅 WebGL（聚合平台接入）走直达。
+            // 原生端（NiuMa 独立售卖）不编译这段，玩家照旧从 NiuMa 大厅点选游戏，
+            // 保证「一套代码多端运行」的同时厂商原版行为零变化。
             if (!LaunchParams.IsAggregated || !LaunchParams.HasTargetGame)
                 return;
 
             string target = LaunchParams.Game;
-            Debug.Log("聚合启动：尝试直达游戏 " + target);
-
-            GameEntry[] entries = Resources.FindObjectsOfTypeAll<GameEntry>();
-            GameEntry matched = null;
-            for (int i = 0; i < entries.Length; i++)
+            string niuMaName = MapToNiuMaGameName(target);
+            if (string.IsNullOrEmpty(niuMaName))
             {
-                GameEntry e = entries[i];
-                if (e == null)
-                    continue;
-                if (string.Equals(e._gameName, target, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(e._gameAlias, target, StringComparison.OrdinalIgnoreCase))
-                {
-                    matched = e;
-                    break;
-                }
+                Debug.LogWarning("聚合启动：平台游戏编码 " + target +
+                    " 未映射到 NiuMa 游戏名，已留在大厅");
+                return;
             }
 
-            if (matched != null)
+            Debug.Log("聚合启动：直达游戏 " + target + " -> " + niuMaName);
+
+            // 复用 NiuMa 大厅自己的点击逻辑（Hall.lua 的 OnGameClick），
+            // 而不是去找 GameEntry 组件——实测大厅 prefab 里并没有 GameEntry，
+            // 它只挂在旧版的 GameList.prefab 上，靠它永远匹配不到。
+            // 走 OnGameClick 等价于玩家手点一次该游戏图标，路径完全一致。
+            try
             {
-                Debug.Log("聚合启动：直达 " + matched._gameName);
-                matched.EnterDirectly();
+                LuaManager.Instance.Lua.DoString(
+                    "local ok, hall = pcall(require, 'Hall.Hall') " +
+                    "if ok and hall and hall.OnGameClick then " +
+                    "  hall.OnGameClick('" + niuMaName + "') " +
+                    "else " +
+                    "  print('[WebGL] Hall.OnGameClick 不可用') " +
+                    "end");
             }
-            else
+            catch (System.Exception ex)
             {
-                Debug.LogWarning("聚合启动：未找到游戏 " + target + "，已留在大厅。可用的游戏名需与 GameEntry._gameName 一致");
+                Debug.LogError("聚合启动：调用 Hall.OnGameClick 失败 " + ex.Message);
+            }
+#endif
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>
+        /// 平台 gameCode -> NiuMa 大厅内部游戏名
+        ///
+        /// 平台（gaming-server 厂商目录）用 AG 风格大写编码（MAHJONG/BIJI/LACKEY），
+        /// 而 NiuMa 的 Hall.lua 用 PascalCase 名字做分支判断。
+        /// 这里只做「对外编码 -> 厂商内部名」的翻译，不新增游戏：
+        /// NiuMa 大厅里没有的游戏（如未接入的牛牛、掼蛋）返回 null，玩家留在大厅。
+        /// </summary>
+        private static string MapToNiuMaGameName(string platformGameCode)
+        {
+            if (string.IsNullOrEmpty(platformGameCode))
+                return null;
+
+            switch (platformGameCode.ToUpperInvariant())
+            {
+                case "MAHJONG":   return "Mahjong";
+                case "BIJI":      return "BiJi";
+                case "LACKEY":    return "Lackey";
+                case "NIUNIU100": return "NiuNiu100";
+                case "GUANDAN":   return "GuanDan";
+                default:          return null;
             }
         }
+#endif
 
         private void CreateDumbGame()
         {
