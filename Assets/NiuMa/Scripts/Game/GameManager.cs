@@ -842,11 +842,42 @@ namespace NiuMa
 
         public void DestroyGameHall()
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // 聚合平台：游戏页的「返回」应该回到 club 的棋牌列表，
+            // 而不是 NiuMa 大厅（大厅不属于本平台）。
+            // 这里直接把返回事件上抛给宿主（Expo WebView 收到后 router.back()）。
+            if (LaunchParams.IsAggregated)
+            {
+                ExitToHost();
+                return;
+            }
+#endif
             if (_gameHall == null)
                 return;
             GameObject.Destroy(_gameHall);
             _gameHall = null;
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void NiuMaWS_ExitToHost();
+
+        /// <summary>
+        /// 把「返回」上抛给宿主（Expo WebView / 浏览器历史）。
+        /// 实现见 Assets/Plugins/WebGL/NiuMaWS.jslib 的 NiuMaWS_ExitToHost。
+        /// </summary>
+        private static void ExitToHost()
+        {
+            try
+            {
+                NiuMaWS_ExitToHost();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("[WebGL] 通知宿主退出失败: " + ex.Message);
+            }
+        }
+#endif
 
         public void DestroyGameRoom()
         {

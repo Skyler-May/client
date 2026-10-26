@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -91,6 +91,13 @@ public class Login : MonoBehaviour
         // ================================================================
         if (LaunchParams.IsAggregated)
         {
+            // 关键：先隐藏登录/注册面板，再发起 player/info。
+            //
+            // 否则登录 UI 会先渲染一帧（账号、密码、验证码输入框），
+            // 玩家能看到「闪一下登录页」——即使随后就自动登录成功。
+            // Start() 在首帧正式渲染前执行，这里隐藏即可彻底避免闪烁。
+            HideLoginPanels();
+
             GameManager.Instance.Token = LaunchParams.Token;
             GetPlayerInfo();
             return;
@@ -126,6 +133,24 @@ public class Login : MonoBehaviour
     // Update is called once per frame
     void Update()
     {}
+
+    /// <summary>
+    /// 隐藏登录 / 注册面板（不发请求、不改状态机，仅做显示层隐藏）。
+    ///
+    /// 供聚合平台免登录使用：Start() 里第一时间调用，
+    /// 避免「Unity 起来后闪一下登录页」。
+    /// </summary>
+    private void HideLoginPanels()
+    {
+        if (_panelLogin != null)
+            _panelLogin.SetActive(false);
+        if (_panelRegister != null)
+            _panelRegister.SetActive(false);
+        if (_loginPC != null)
+            _loginPC.SetActive(false);
+        if (_loginWechat != null)
+            _loginWechat.SetActive(false);
+    }
 
     private void InitLogin()
     {

@@ -99,6 +99,43 @@ mergeInto(LibraryManager.library, {
     delete NiuMaWSState.sockets[handle];
   },
 
+  // -------------------------------------------------------------------------
+  // 聚合平台（Expo WebView）退出桥接
+  //
+  // NiuMa 原生的「返回」是 DestroyGameHall() → 回到 NiuMa 大厅。
+  // 但在聚合平台里，根页面是 club 的棋牌列表，回 NiuMa 大厅是错的，
+  // 玩家会看到一个不属于本平台的大厅，且无法再回 club。
+  //
+  // 因此这里把「返回」上抛给宿主：
+  //   1) Expo WebView → window.ReactNativeWebView.postMessage（Expo 收到后 router.back()）
+  //   2) 普通浏览器   → history.back()，若无历史则提示
+  // -------------------------------------------------------------------------
+  NiuMaWS_ExitToHost: function () {
+    try {
+      var msg = JSON.stringify({ type: 'niuma.exit' });
+
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msg);
+        return;
+      }
+
+      // 兼容直接用浏览器打开的场景
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, '*');
+      }
+
+      if (window.history && window.history.length > 1) {
+        window.history.back();
+      } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, '*');
+      }
+    } catch (e) {
+      if (window.console && console.error) {
+        console.error('[NiuMa] ExitToHost 失败: ' + e);
+      }
+    }
+  },
+
   NiuMaWS_Free: function (ptr) {
     _free(ptr);
   }
