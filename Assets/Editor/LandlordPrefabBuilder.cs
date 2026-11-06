@@ -251,6 +251,22 @@ namespace NiuMa.EditorTools
             hl.childForceExpandWidth = false;
             hl.childForceExpandHeight = false;
 
+            // 手牌模板（Lua 克隆这个生成每张牌）
+            var cardImg = Panel("CardTemplate", root, new Color(1f, 1f, 1f, 1f));
+            var crt = cardImg.rectTransform;
+            crt.anchorMin = crt.anchorMax = new Vector2(0.5f, 0f);
+            crt.pivot = new Vector2(0.5f, 0f);
+            crt.anchoredPosition = new Vector2(0, 240);
+            crt.sizeDelta = new Vector2(64, 92);
+            var clbl = Label("Text", cardImg.transform, "", 26, new Color(0.1f, 0.1f, 0.1f, 1f));
+            var clrt = clbl.rectTransform;
+            clrt.anchorMin = Vector2.zero;
+            clrt.anchorMax = Vector2.one;
+            clrt.offsetMin = Vector2.zero;
+            clrt.offsetMax = Vector2.zero;
+            cardImg.gameObject.AddComponent<Button>();
+            cardImg.gameObject.SetActive(false);
+
             Btn("BtnPlay", root, "出牌", new Color(0.82f, 0.55f, 0.13f, 1f), new Vector2(-120, -250), new Vector2(180, 64));
             Btn("BtnPass", root, "不出", new Color(0.35f, 0.35f, 0.35f, 1f), new Vector2(80, -250), new Vector2(180, 64));
             Btn("BtnSync", root, "同步", new Color(0.20f, 0.45f, 0.75f, 1f), new Vector2(280, -250), new Vector2(140, 64));

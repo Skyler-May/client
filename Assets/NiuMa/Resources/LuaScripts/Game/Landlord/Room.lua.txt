@@ -1,0 +1,207 @@
+-- 描述：斗地主牌桌脚本（网狐规则移植，极简 UI，美术待替换）
+-- 协议：与服务端 MsgLandlord* 对齐
+local base = require 'BehaviourBase';
+local rapidjson = require('rapidjson');
+
+local _module = setmetatable({}, { __index = base });
+
+_module.messages = "MsgLandlordSyncResp,MsgLandlordDealCard,MsgLandlordHandCard," ..
+    "MsgLandlordTurn,MsgLandlordPlayCardResp,MsgLandlordGameOver";
+
+_module.GameState = { Waiting = 0, Dealing = 1, Playing = 2 };
+
+-- 牌面显示：花色 + 点数（服务端 cardId 编码，与服务端 PokerCard 一致）
+local SUITS = { "♠", "♥", "♣", "♦" };
+
+local function cardText(cardId)
+    local value = cardId % 100;
+    local suit = math.floor(cardId / 100) % 10;
+    if (value == 0) then
+        return "王";
+    end
+    local names = { "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2" };
+    local name = names[value] or tostring(value);
+    return name .. (SUITS[suit] or "");
+end
+
+function _module:Awake()
+    local obj = self.gameObject;
+    local ui = CS.NiuMa.LuaUGUI;
+
+    self._hand = {};
+    self._selected = {};
+    self._mySeat = 0;
+    self._myTurn = false;
+
+    local child = obj.transform:Find("Info");
+    if (child ~= nil) then
+        self._info = child.gameObject;
+    end
+    child = obj.transform:Find("Table");
+    if (child ~= nil) then
+        self._table = child.gameObject;
+    end
+    child = obj.transform:Find("Hand");
+    if (child ~= nil) then
+        self._handParent = child.gameObject;
+    end
+    child = obj.transform:Find("CardTemplate");
+    if (child ~= nil) then
+        self._cardTemplate = child.gameObject;
+        self._cardTemplate:SetActive(false);
+    end
+
+    for i = 0, 2 do
+        child = obj.transform:Find("Player" .. i);
+        if (child ~= nil) then
+            self["_player" .. i] = child.gameObject;
+        end
+    end
+
+    child = obj.transform:Find("BtnPlay");
+    if (child ~= nil) then
+        ui.AddBtnClick(child.gameObject, self.OnPlayClick);
+        self._btnPlay = child.gameObject;
+    end
+    child = obj.transform:Find("BtnPass");
+    if (child ~= nil) then
+        ui.AddBtnClick(child.gameObject, self.OnPassClick);
+        self._btnPass = child.gameObject;
+    end
+    child = obj.transform:Find("BtnSync");
+    if (child ~= nil) then
+        ui.AddBtnClick(child.gameObject, self.OnSyncClick);
+    end
+
+    self:EnableButtons(false);
+end
+
+function _module:SetInfo(text)
+    if (self._info ~= nil) then
+        CS.NiuMa.LuaUGUI.SetText(self._info, text);
+    end
+end
+
+function _module:EnableButtons(b)
+    if (self._btnPlay ~= nil) then
+        self._btnPlay:SetActive(b);
+    end
+    if (self._btnPass ~= nil) then
+        self._btnPass:SetActive(b);
+    end
+end
+
+function _module:ClearHand()
+    self._hand = {};
+    if (self._handParent == nil) then
+        return;
+    end
+    local t = self._handParent.transform;
+    for i = t.childCount - 1, 0, -1 do
+        CS.UnityEngine.Object.Destroy(t:GetChild(i).gameObject);
+    end
+end
+
+function _module:RenderHand(cards)
+    self._hand = cards or {};
+    self._selected = {};
+    if (self._handParent == nil or self._cardTemplate == nil) then
+        return;
+    end
+    local t = self._handParent.transform;
+    for i = t.childCount - 1, 0, -1 do
+        CS.UnityEngine.Object.Destroy(t:GetChild(i).gameObject);
+    end
+    for i, cardId in ipairs(self._hand) do
+        local go = CS.UnityEngine.GameObject.Instantiate(self._cardTemplate, t);
+        go:SetActive(true);
+        CS.NiuMa.LuaUGUI.SetText(go, cardText(cardId));
+        local index = i;
+        CS.NiuMa.LuaUGUI.AddBtnClick(go, function()
+            _module:ToggleSelect(index, go);
+        end);
+    end
+    self:SetInfo("手牌 " .. tostring(#self._hand) .. " 张");
+end
+
+function _module:ToggleSelect(index, go)
+    local cardId = self._hand[index];
+    if (cardId == nil) then
+        return;
+    end
+    if (self._selected[index]) then
+        self._selected[index] = nil;
+        go.transform.localPosition = CS.UnityEngine.Vector3(0, 0, 0);
+    else
+        self._selected[index] = cardId;
+        go.transform.localPosition = CS.UnityEngine.Vector3(0, 18, 0);
+    end
+end
+
+function _module:SelectedCards()
+    local list = {};
+    for i, cardId in pairs(self._selected) do
+        table.insert(list, cardId);
+    end
+    return list;
+end
+
+function _module:OnPlayClick()
+    local cards = _module:SelectedCards();
+    if (#cards == 0) then
+        print("[Landlord] 未选牌");
+        return;
+    end
+    local json = rapidjson.encode({ venueId = _module._venueId or "", cardIds = cards });
+    CS.NiuMa.NetworkManager.Instance:SendMessage("MsgLandlordPlayCard", json, true);
+    print("[Landlord] 出牌 " .. tostring(#cards) .. " 张");
+end
+
+function _module:OnPassClick()
+    local json = rapidjson.encode({ venueId = _module._venueId or "", cardIds = {} });
+    CS.NiuMa.NetworkManager.Instance:SendMessage("MsgLandlordPlayCard", json, true);
+    print("[Landlord] 不出");
+end
+
+function _module:OnSyncClick()
+    CS.NiuMa.NetworkManager.Instance:SendInnerMessage("MsgLandlordSync");
+    print("[Landlord] 请求同步");
+end
+
+function _module:OnMessage(msgType, json)
+    local msg = rapidjson.decode(json or "{}");
+    if (msgType == "MsgLandlordSyncResp") then
+        self._venueId = msg.venueId or self._venueId;
+        self._mySeat = msg.seat or 0;
+        if (msg.handCards ~= nil) then
+            self:RenderHand(msg.handCards);
+        end
+        self._myTurn = (msg.current == self._mySeat);
+        self:EnableButtons(self._myTurn);
+        self:SetInfo("房间 " .. tostring(msg.number) .. " 底注 " .. tostring(msg.diZhu));
+    elseif (msgType == "MsgLandlordDealCard") then
+        self:SetInfo("发牌中，地主座位 " .. tostring(msg.landlord));
+    elseif (msgType == "MsgLandlordHandCard") then
+        self:RenderHand(msg.cards);
+    elseif (msgType == "MsgLandlordTurn") then
+        self._myTurn = (msg.seat == self._mySeat);
+        self:EnableButtons(self._myTurn);
+        if (self._myTurn) then
+            self:SetInfo(msg.mustPlay and "轮到你（必须出牌）" or "轮到你");
+        else
+            self:SetInfo("等待座位 " .. tostring(msg.seat));
+        end
+    elseif (msgType == "MsgLandlordPlayCardResp") then
+        if (msg.success == false) then
+            self:SetInfo("出牌失败: " .. tostring(msg.errMsg));
+        else
+            self:SetInfo((msg.passed and "不出" or "出牌") .. "，剩余 " .. tostring(msg.leftNums));
+        end
+    elseif (msgType == "MsgLandlordGameOver") then
+        self:EnableButtons(false);
+        local win = (msg.landlordWin and "地主胜") or "农民胜";
+        self:SetInfo("本局结束：" .. win .. "，赢家座位 " .. tostring(msg.winner));
+    end
+end
+
+return _module;
