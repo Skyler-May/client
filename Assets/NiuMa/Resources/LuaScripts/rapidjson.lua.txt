@@ -1,0 +1,248 @@
+--[[
+  rapidjson.lua —— 纯 Lua 的 rapidjson 兼容实现（仅 WebGL/H5 用）
+
+  背景：H5 构建里没有 xLua 的 rapidjson 原生模块（libmp3lame 桩里 luaopen_rapidjson 返回 0），
+  Lua 侧 `require("rapidjson")` 会拿到 false，调用 encode/decode 直接报错。
+  这里提供一个纯 Lua 的等价实现，接口保持一致：
+      rapidjson.encode(value) -> string
+      rapidjson.decode(str)   -> value
+]]
+
+local rapidjson = {}
+
+local function isArray(t)
+    local n = 0
+    for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+            return false
+        end
+        n = n + 1
+    end
+    if n == 0 then
+        return true
+    end
+    for i = 1, n do
+        if t[i] == nil then
+            return false
+        end
+    end
+    return true
+end
+
+local escapeMap = {
+    ['"'] = '\\"',
+    ["\\"] = "\\\\",
+    ["\b"] = "\\b",
+    ["\f"] = "\\f",
+    ["\n"] = "\\n",
+    ["\r"] = "\\r",
+    ["\t"] = "\\t",
+}
+
+local function escapeStr(s)
+    return '"' .. s:gsub('[%z\1-\31\\"]', function(c)
+        return escapeMap[c] or string.format("\\u%04x", string.byte(c))
+    end) .. '"'
+end
+
+local encodeValue
+
+local function encodeTable(t, depth)
+    if isArray(t) then
+        local parts = {}
+        for i = 1, #t do
+            parts[#parts + 1] = encodeValue(t[i], depth + 1)
+        end
+        return "[" .. table.concat(parts, ",") .. "]"
+    end
+    local parts = {}
+    for k, v in pairs(t) do
+        local key
+        if type(k) == "string" then
+            key = escapeStr(k)
+        elseif type(k) == "number" then
+            key = escapeStr(tostring(k))
+        else
+            key = escapeStr(tostring(k))
+        end
+        parts[#parts + 1] = key .. ":" .. encodeValue(v, depth + 1)
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
+encodeValue = function(v, depth)
+    local tv = type(v)
+    if v == nil then
+        return "null"
+    elseif tv == "boolean" then
+        return v and "true" or "false"
+    elseif tv == "number" then
+        if v ~= v or v == math.huge or v == -math.huge then
+            return "null"
+        end
+        if math.floor(v) == v then
+            return string.format("%d", v)
+        end
+        return string.format("%.14g", v)
+    elseif tv == "string" then
+        return escapeStr(v)
+    elseif tv == "table" then
+        return encodeTable(v, depth or 0)
+    else
+        return escapeStr(tostring(v))
+    end
+end
+
+function rapidjson.encode(value)
+    local ok, ret = pcall(encodeValue, value, 0)
+    if not ok then
+        return nil
+    end
+    return ret
+end
+
+-- ============ decode ============
+
+local decodeValue
+
+local function skipWhitespace(s, i)
+    while i <= #s do
+        local c = s:sub(i, i)
+        if c == " " or c == "\t" or c == "\n" or c == "\r" then
+            i = i + 1
+        else
+            break
+        end
+    end
+    return i
+end
+
+local function parseString(s, i)
+    -- s:sub(i,i) == '"'
+    i = i + 1
+    local buf = {}
+    while i <= #s do
+        local c = s:sub(i, i)
+        if c == '"' then
+            return table.concat(buf), i + 1
+        elseif c == "\\" then
+            local n = s:sub(i + 1, i + 1)
+            if n == '"' or n == "\\" or n == "/" then
+                buf[#buf + 1] = n
+                i = i + 2
+            elseif n == "b" then
+                buf[#buf + 1] = "\b"; i = i + 2
+            elseif n == "f" then
+                buf[#buf + 1] = "\f"; i = i + 2
+            elseif n == "n" then
+                buf[#buf + 1] = "\n"; i = i + 2
+            elseif n == "r" then
+                buf[#buf + 1] = "\r"; i = i + 2
+            elseif n == "t" then
+                buf[#buf + 1] = "\t"; i = i + 2
+            elseif n == "u" then
+                local hex = s:sub(i + 2, i + 5)
+                local code = tonumber(hex, 16) or 63
+                -- 简单处理 BMP（足够聊天/配置用）
+                if code < 128 then
+                    buf[#buf + 1] = string.char(code)
+                elseif code < 2048 then
+                    buf[#buf + 1] = string.char(192 + math.floor(code / 64), 128 + code % 64)
+                else
+                    buf[#buf + 1] = string.char(224 + math.floor(code / 4096),
+                        128 + math.floor(code / 64) % 64, 128 + code % 64)
+                end
+                i = i + 6
+            else
+                buf[#buf + 1] = n
+                i = i + 2
+            end
+        else
+            buf[#buf + 1] = c
+            i = i + 1
+        end
+    end
+    return table.concat(buf), i
+end
+
+decodeValue = function(s, i)
+    i = skipWhitespace(s, i)
+    local c = s:sub(i, i)
+    if c == "{" then
+        local obj = {}
+        i = skipWhitespace(s, i + 1)
+        if s:sub(i, i) == "}" then
+            return obj, i + 1
+        end
+        while true do
+            i = skipWhitespace(s, i)
+            local key
+            key, i = parseString(s, i)
+            i = skipWhitespace(s, i)
+            -- 跳过冒号
+            if s:sub(i, i) ~= ":" then
+                return nil, i
+            end
+            local val
+            val, i = decodeValue(s, i + 1)
+            obj[key] = val
+            i = skipWhitespace(s, i)
+            local sep = s:sub(i, i)
+            if sep == "," then
+                i = i + 1
+            elseif sep == "}" then
+                return obj, i + 1
+            else
+                return nil, i
+            end
+        end
+    elseif c == "[" then
+        local arr = {}
+        i = skipWhitespace(s, i + 1)
+        if s:sub(i, i) == "]" then
+            return arr, i + 1
+        end
+        while true do
+            local val
+            val, i = decodeValue(s, i)
+            arr[#arr + 1] = val
+            i = skipWhitespace(s, i)
+            local sep = s:sub(i, i)
+            if sep == "," then
+                i = i + 1
+            elseif sep == "]" then
+                return arr, i + 1
+            else
+                return nil, i
+            end
+        end
+    elseif c == '"' then
+        return parseString(s, i)
+    elseif c == "t" and s:sub(i, i + 3) == "true" then
+        return true, i + 4
+    elseif c == "f" and s:sub(i, i + 4) == "false" then
+        return false, i + 5
+    elseif c == "n" and s:sub(i, i + 3) == "null" then
+        return nil, i + 4
+    else
+        -- 数字
+        local numStr = s:match("^-?%d+%.?%d*[eE]?[-+]?%d*", i)
+        if numStr and #numStr > 0 then
+            return tonumber(numStr), i + #numStr
+        end
+        return nil, i + 1
+    end
+end
+
+function rapidjson.decode(text)
+    if type(text) ~= "string" then
+        return nil
+    end
+    local ok, value = pcall(decodeValue, text, 1)
+    if not ok then
+        return nil
+    end
+    return value
+end
+
+return rapidjson

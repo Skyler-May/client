@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -47,7 +47,7 @@ public class Load : MonoBehaviour
     public Client _client = null;
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private List<string> _mainAssetBundles = new List<string>();
     private List<string> _newAssetBundles = new List<string>();
     private int _current = 0;
@@ -88,8 +88,37 @@ public class Load : MonoBehaviour
     /// </summary>
     private void LoadConfig()
     {
-        const string url = "https://gzyx.oss-cn-shenzhen.aliyuncs.com/config.json";
-        //const string url = "http://192.168.6.220:8088/niuma/config.json";
+        // 默认：与 H5 同源部署的 config.json（生产上 H5 与配置在同一域名下）
+        // 联调：可用 index.html?configHost=http://host:port 覆盖
+        // 兜底：都取不到时回到线上 OSS（保持原行为）
+        string url = "https://gzyx.oss-cn-shenzhen.aliyuncs.com/config.json";
+        string abs = Application.absoluteURL;
+        if (!string.IsNullOrEmpty(abs))
+        {
+            int i = abs.IndexOf("configHost=");
+            if (i >= 0)
+            {
+                string v = abs.Substring(i + "configHost=".Length);
+                int amp = v.IndexOf('&');
+                if (amp >= 0)
+                    v = v.Substring(0, amp);
+                v = System.Uri.UnescapeDataString(v).TrimEnd('/');
+                if (v.Length > 0)
+                    url = v + "/config.json";
+            }
+            else
+            {
+                int q = abs.IndexOf('?');
+                string noQuery = q >= 0 ? abs.Substring(0, q) : abs;
+                int schemeEnd = noQuery.IndexOf("://");
+                if (schemeEnd > 0)
+                {
+                    int pathStart = noQuery.IndexOf('/', schemeEnd + 3);
+                    if (pathStart > 0)
+                        url = noQuery.Substring(0, pathStart) + "/config.json";
+                }
+            }
+        }
         HttpRequester.Instance.Get(url, null, OnLoadConfig);
     }
 
@@ -115,6 +144,8 @@ public class Load : MonoBehaviour
                     assetBundleHost = assetBundleHost + "android/";
 #elif UNITY_IOS
                     assetBundleHost = assetBundleHost + "ios/";
+#elif UNITY_WEBGL
+                    assetBundleHost = assetBundleHost + "webgl/";
 #endif
                 }
                 if (string.IsNullOrEmpty(httpHost) || string.IsNullOrEmpty(assetBundleHost))
@@ -146,7 +177,7 @@ public class Load : MonoBehaviour
     {
 #if UNITY_EDITOR
         LoadComplete();
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         string localPath = ResourceManager.GetLocalAssetBundlePath();
         if (localPath.Length > 0)
         {
@@ -165,7 +196,7 @@ public class Load : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private void DownloadHashFile()
     {
         string url = ResourceManager.Instance.AssetBundleHost + "files.txt";

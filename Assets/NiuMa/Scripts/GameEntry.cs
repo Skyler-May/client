@@ -16,7 +16,7 @@ public class GameEntry : MonoBehaviour
     private Text _precent = null;
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private List<string> _assetBundles = new List<string>();
     private int _current = 0;
     private bool _outdated = false;     // 是否需要更新
@@ -45,7 +45,7 @@ public class GameEntry : MonoBehaviour
     private void Start()
     {
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         _outdated = GameManifest.Instance.IsGameOutdated(_gameName);
         if (_outdated)
         {
@@ -67,7 +67,7 @@ public class GameEntry : MonoBehaviour
     {
 #if UNITY_EDITOR
         EnterGame();
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         if (_downloading)
             return;
         if (_outdated)
@@ -92,7 +92,7 @@ public class GameEntry : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private void SetUpdated()
     {
         GameManifest.Instance.SetGameUpdated(_gameName);

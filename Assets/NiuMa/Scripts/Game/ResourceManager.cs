@@ -38,7 +38,7 @@ namespace NiuMa
         }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         // 远程AssetBundle哈希映射表
         private Dictionary<string, string> _remoteHashes = new Dictionary<string, string>();
 
@@ -303,7 +303,7 @@ namespace NiuMa
             {
 #if UNITY_EDITOR
                 // 编辑器仅支持Resources.Load
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
                 // Android及IOS支持AssetBundle
                 string name = path;
                 if (name.Length > 0)
@@ -326,7 +326,7 @@ namespace NiuMa
         }
 
 #if UNITY_EDITOR
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         public void Update()
         {
             _interval += Time.unscaledDeltaTime;

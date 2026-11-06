@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -8,6 +8,26 @@ using XLua;
 
 namespace NiuMa
 {
+#if UNITY_WEBGL
+    internal static class WebGLVoice
+    {
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        public static extern void NiuMa_VoiceSelfTest(int ms);
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        public static extern int NiuMa_VoiceInit();
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        public static extern int NiuMa_VoiceStart();
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        public static extern int NiuMa_VoiceStop();
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        public static extern System.IntPtr NiuMa_VoiceTakeBase64();
+    }
+#endif
+
     // 录音器接口
     public interface RecorderListener
     {
@@ -90,6 +110,17 @@ namespace NiuMa
         {
             if (_initialized)
                 return;
+            #if UNITY_WEBGL
+            // WebGL 没有 Microphone，改用 WebAudio + lamejs（niuma-voice.jslib）采集与编码
+            _initialized = true;
+            Debug.Log("[Voice] WebGL 语音已启用（WebAudio + lamejs）");
+            if (GameManager.Instance != null && GameManager.Instance.DebugMode)
+            {
+                WebGLVoice.NiuMa_VoiceSelfTest(1500);
+                Debug.Log("[Voice] 已触发 WebGL 语音自检（1.5s）");
+            }
+            return;
+            #else
             string[] devices = Microphone.devices;
             if (devices.Length == 0)
             {
@@ -98,6 +129,7 @@ namespace NiuMa
                 return;
             }
             _initialized = true;
+            #endif
         }
 
         [BlackList]
@@ -139,7 +171,12 @@ namespace NiuMa
 
             _abort = false;
             _recording = true;
+#if UNITY_WEBGL
+            WebGLVoice.NiuMa_VoiceInit();
+            WebGLVoice.NiuMa_VoiceStart();
+#else
             _recordedClip = Microphone.Start(null, false, 60, 11025);
+#endif
             AudioManager.Instance.StartRecord();
             foreach (RecorderListener rec in _recorders)
                 rec.OnRecordStart();
@@ -152,11 +189,19 @@ namespace NiuMa
 
             _abort = abort;
             _recording = false;
+            #if UNITY_WEBGL
+            int position = 0;
+            #else
             int position = Microphone.GetPosition(null);
             Microphone.End(null);
+            #endif
             AudioManager.Instance.StopRecord();
             foreach (RecorderListener rec in _recorders)
                 rec.OnRecordStop();
+#if UNITY_WEBGL
+            // WebGL：jslib 已把录音编码成 mp3，取 base64 落盘
+            SaveWebGLVoice();
+#else
             if (_recordedClip != null)
             {
                 string fileName = DateTime.Now.ToString("MMddHHmm");
@@ -167,7 +212,43 @@ namespace NiuMa
                     lis.OnRecordCompleted(fileName);
                 _recordedClip = null;
             }
+#endif
         }
+
+#if UNITY_WEBGL
+        /// <summary>WebGL：把 jslib 编码好的 mp3 写成文件并通知监听者</summary>
+        private void SaveWebGLVoice()
+        {
+            try
+            {
+                int size = WebGLVoice.NiuMa_VoiceStop();
+                if (size <= 0)
+                {
+                    Debug.LogWarning("[Voice] WebGL 未录到音频");
+                    return;
+                }
+                System.IntPtr ptr = WebGLVoice.NiuMa_VoiceTakeBase64();
+                string b64 = System.Runtime.InteropServices.Marshal.PtrToStringAnsi(ptr);
+                if (string.IsNullOrEmpty(b64))
+                {
+                    Debug.LogWarning("[Voice] WebGL 取音频数据失败");
+                    return;
+                }
+                byte[] bytes = Convert.FromBase64String(b64);
+                string fileName = DateTime.Now.ToString("MMddHHmm");
+                fileName = "my_record_" + fileName + ".mp3";
+                string path = Path.Combine(Application.persistentDataPath, fileName);
+                File.WriteAllBytes(path, bytes);
+                Debug.Log("[Voice] WebGL 语音已保存: " + fileName + " (" + bytes.Length + " 字节)");
+                foreach (VoiceListener lis in _listeners)
+                    lis.OnRecordCompleted(fileName);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[Voice] WebGL 保存语音失败: " + ex.Message);
+            }
+        }
+#endif
 
         public void PushVoice(string fileName, int seat)
         {

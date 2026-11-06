@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using MessagePack;
@@ -102,8 +102,59 @@ namespace NiuMa
             }
         }
 
+        /// <summary>
+        /// 判断消息类型属于哪个游戏（返回 "Mahjong"/"BiJi"/"Lackey"/"GuanDan"/"NiuNiu100"，
+        /// 无法判断时返回空串，例如聊天、心跳、大厅通用消息）
+        /// </summary>
+        private static string GetGameOfMessage(string msgType)
+        {
+            if (string.IsNullOrEmpty(msgType))
+                return "";
+            if (msgType.StartsWith("MsgLackey"))
+                return "Lackey";
+            if (msgType.StartsWith("MsgBiJi"))
+                return "BiJi";
+            if (msgType.StartsWith("MsgGuanDan") || msgType.StartsWith("MsgPresentTribute") || msgType.StartsWith("MsgRefundTribute"))
+                return "GuanDan";
+            if (msgType.StartsWith("MsgNiu100"))
+                return "NiuNiu100";
+            // 麻将的消息有一部分不带 Mahjong 前缀，这里按已知类型枚举
+            switch (msgType)
+            {
+                case "MsgMahjongTiles":
+                case "MsgActorUpdated":
+                case "MsgWaitAction":
+                case "MsgFetchTile":
+                case "MsgActionOption":
+                case "MsgDoActionOption":
+                case "MsgPassActionOption":
+                case "MsgActionOptionFinish":
+                case "MsgPlayTile":
+                case "MsgGangTile":
+                case "MsgPengChiTile":
+                case "MsgTingTile":
+                case "MsgHuTile":
+                case "MsgShowTiles":
+                case "MsgPassTip":
+                case "MsgNextTile":
+                case "MsgMahjongSync":
+                case "MsgMahjongSyncResp":
+                case "MsgMahjongStartRound":
+                case "MsgMahjongSettlement":
+                case "MsgMahjongDisbandVote":
+                    return "Mahjong";
+            }
+            return "";
+        }
+
         private bool OnMessage(MsgWrapper mw)
         {
+            // 只处理当前所在游戏的消息：避免残留在旧房间时被其他游戏的推送刷屏
+            string msgGame = GetGameOfMessage(mw.msgType);
+            string curGame = GameManager.CurrentGame;
+            if (msgGame.Length > 0 && curGame.Length > 0 && msgGame != curGame)
+                return false;
+
             bool ret = false;
             MsgBase msg = Deserialize(mw);
             if (msg == null)

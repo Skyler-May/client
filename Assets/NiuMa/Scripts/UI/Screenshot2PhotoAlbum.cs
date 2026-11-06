@@ -29,7 +29,7 @@ namespace UnityEngine
         public void SaveScreenShot()
         {
 #if (UNITY_EDITOR || UNITY_STANDALONE)
-#elif (UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         StartCoroutine(CaptureScreenShot());
 #endif
         }

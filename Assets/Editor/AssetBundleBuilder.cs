@@ -48,6 +48,18 @@ public class AssetBundleBuilder
         BuildResources(BuildTarget.StandaloneWindows64);
     }
 
+    [MenuItem("Assets/AssetBundleBuilder/WebGL Resources")]
+    public static void BuildWebGLResources()
+    {
+        BuildResources(BuildTarget.WebGL);
+    }
+
+    [MenuItem("Assets/AssetBundleBuilder/WebGL LuaScripts")]
+    public static void BuildWebGLLuaScripts()
+    {
+        BuildLuaScripts(BuildTarget.WebGL);
+    }
+
     [MenuItem("Assets/AssetBundleBuilder/Windows LuaScripts")]
     public static void BuildWindowsLuaScripts()
     {
@@ -58,7 +70,8 @@ public class AssetBundleBuilder
     {
         if (targetPlatform != BuildTarget.Android &&
             targetPlatform != BuildTarget.iOS &&
-            targetPlatform != BuildTarget.StandaloneWindows64)
+            targetPlatform != BuildTarget.StandaloneWindows64 &&
+            targetPlatform != BuildTarget.WebGL)
         {
             Debug.LogError("打包AssetBundle错误，目标平台不支持");
             return;
@@ -70,6 +83,8 @@ public class AssetBundleBuilder
             outPath += "ios";
         else if (targetPlatform == BuildTarget.StandaloneWindows64)
             outPath += "windows";
+        else if (targetPlatform == BuildTarget.WebGL)
+            outPath += "webgl";
         if (!Directory.Exists(outPath))
             Directory.CreateDirectory(outPath);
         AssetBundleManifest manifest = BuildPipeline.BuildAssetBundles(outPath, BuildAssetBundleOptions.None, targetPlatform);
@@ -94,7 +109,8 @@ public class AssetBundleBuilder
     {
         if (targetPlatform != BuildTarget.Android &&
             targetPlatform != BuildTarget.iOS &&
-            targetPlatform != BuildTarget.StandaloneWindows64)
+            targetPlatform != BuildTarget.StandaloneWindows64 &&
+            targetPlatform != BuildTarget.WebGL)
         {
             Debug.LogError("打包AssetBundle错误，目标平台不支持");
             return;
@@ -125,6 +141,8 @@ public class AssetBundleBuilder
             outPath += "iOS";
         else if (targetPlatform == BuildTarget.StandaloneWindows64)
             outPath += "windows";
+        else if (targetPlatform == BuildTarget.WebGL)
+            outPath += "webgl";
         if (!Directory.Exists(outPath))
             Directory.CreateDirectory(outPath);
         AssetBundleManifest manifest = BuildPipeline.BuildAssetBundles(outPath, buildMap.ToArray(), BuildAssetBundleOptions.None, targetPlatform);

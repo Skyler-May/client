@@ -16,7 +16,7 @@ namespace NiuMa
 #if UNITY_EDITOR
             string resName = "LuaScripts/" + fileName;
             obj = Resources.Load(resName);
-#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
             obj = ResourceManager.Instance.LoadResource(fileName, "luascripts.ab");
 #endif
             TextAsset text = obj as TextAsset;

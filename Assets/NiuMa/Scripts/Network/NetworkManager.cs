@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using MessagePack;
@@ -83,7 +83,17 @@ namespace NiuMa
         // 当前等待进入的场地数据
         private WaitEnterData _waitEnterData = null;
 
-        private Connection _connection = new Connection();
+        private IConnection _connection = CreateConnection();
+
+        /// <summary>WebGL 没有裸 TCP，走服务端的 WebSocket 端口；其它平台保持 TCP</summary>
+        private static IConnection CreateConnection()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return new WebSocketConnection();
+#else
+            return new Connection();
+#endif
+        }
 
         // 上一次请求建立连接已过了多久
         private float _connectElapsed = 0.0f;
@@ -204,6 +214,8 @@ namespace NiuMa
         [BlackList]
         public void CheckConnection(float deltaTime)
         {
+            // WebSocket 需要每帧轮询收发；TCP 是空实现
+            _connection.Update();
             bool test = true;
             if (_connecting)
             {
@@ -438,7 +450,7 @@ namespace NiuMa
             {
                 // 连接失败
 #if (UNITY_EDITOR || UNITY_STANDALONE)
-#elif (UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
                 if (!string.IsNullOrEmpty(inst.errMsg))
                     Debug.LogError(inst.errMsg);
 #endif

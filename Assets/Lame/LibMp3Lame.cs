@@ -1,4 +1,4 @@
-﻿#region MIT license
+#region MIT license
 // 
 // MIT license
 //
@@ -693,6 +693,10 @@ namespace NAudio.Lame.DLL
             const string libname = @"mp3lame";
 #elif UNITY_STANDALONE_WIN //添加Windows平台宏，否则打PC包会报找不到libmp3lame.dll
             const string libname = @"libmp3lame.dll";
+#elif UNITY_WEBGL
+            // WebGL(H5) 构建：mp3 编码原生库暂无 WebGL 版本，
+            // 这里只为让 H5 包能编译通过；语音录制在 H5 上不可用（调用会抛 DllNotFound）。
+            const string libname = @"__Internal";
 #endif
 
             // typedef void (*lame_report_function)(const char *format, va_list ap);

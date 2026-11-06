@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using XLua;
@@ -33,7 +33,10 @@ namespace NiuMa
         {
             _lua = new LuaEnv();
             _lua.AddLoader(LuaScriptLoader.ReadFile);
+            // WebGL 没有 rapidjson 原生模块，改用 LuaScripts/rapidjson.lua 的纯 Lua 实现
+#if !UNITY_WEBGL
             _lua.AddBuildin("rapidjson", XLua.LuaDLL.Lua.LoadRapidJson);
+#endif
         }
 
         public void Update(float time)

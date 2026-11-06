@@ -83,6 +83,25 @@ function _module:Awake()
 end
 
 function _module:Start()
+    -- 联调：URL 带 autoroom=xxx 时自动进入对应房间（机器人会自动补位）
+    local autoRoom = CS.NiuMa.GameManager.AutoRoom;
+    print("[GuanDan] hall start autoRoom=" .. tostring(autoRoom));
+    CS.NiuMa.GameManager.Instance:ShowPromptTip("DBG guandan start autoRoom=" .. tostring(autoRoom), 3.0);
+    if (autoRoom ~= nil and autoRoom ~= "") then
+        CS.NiuMa.GameManager.AutoRoom = "";
+        if (autoRoom == "beginner") then
+            self:OnBeginnerClick();
+        elseif (autoRoom == "moderate") then
+            self:OnModerateClick();
+        elseif (autoRoom == "advanced") then
+            self:OnAdvancedClick();
+        elseif (autoRoom == "master") then
+            self:OnMasterClick();
+        elseif (autoRoom == "practice") then
+            self:OnPraticeClick();
+        end
+        return;
+    end
 end
 
 function _module:Update()

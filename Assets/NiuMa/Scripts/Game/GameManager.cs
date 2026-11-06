@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
@@ -11,6 +11,15 @@ namespace NiuMa
     [LuaCallCSharp]
     public class GameManager
     {
+        /// <summary>联调用：进入大厅后自动打开的游戏名（Mahjong/GuanDan/Lackey/BiJi/NiuNiu100）</summary>
+        public static string AutoGame = "";
+
+        /// <summary>联调用：进入游戏大厅后自动进入的房间（GuanDan: beginner/moderate/advanced/master/practice）</summary>
+        public static string AutoRoom = "";
+
+        /// <summary>当前所在的游戏（Mahjong/NiuNiu100/BiJi/Lackey/GuanDan），用于过滤其他游戏的消息</summary>
+        public static string CurrentGame = "";
+
         // 禁止外部创建
         private GameManager() { }
         private static readonly GameManager _instance = new GameManager();
@@ -18,6 +27,131 @@ namespace NiuMa
         public static GameManager Instance
         {
             get { return _instance; }
+        }
+
+        // ================= 联调用：先下载游戏资源再进大厅 =================
+        private string _dlGame = "";
+        private string _dlReadyGame = "";
+        private List<string> _dlBundles = new List<string>();        private int _dlIndex = 0;
+
+        /// <summary>
+        /// 开始下载指定游戏的资源包（下载完成后 IsGameBundlesReady 返回 true）
+        /// </summary>
+        public void StartGameDownload(string gameName)
+        {
+#if UNITY_EDITOR
+            // 编辑器下资源直接可读，不需要下载
+            _dlReadyGame = gameName;
+#elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
+            _dlGame = gameName;
+            _dlReadyGame = "";
+            _dlBundles.Clear();
+            _dlIndex = 0;
+            GameManifest.Instance.GetGameOutdatedABs(gameName, ref _dlBundles);
+            if (_dlBundles.Count == 0)
+            {
+                // 没有需要下载的资源包，直接打开大厅（不依赖 Lua 侧轮询）
+                _dlReadyGame = gameName;
+                _dlGame = "";
+                Debug.Log("[GameManager] no outdated bundles for " + gameName + ", open hall directly");
+                OpenGameHall(gameName);
+                return;
+            }
+            Debug.Log("[GameManager] start download game bundles: " + gameName + ", count=" + _dlBundles.Count);
+            DownloadNextGameBundle();
+#endif
+        }
+
+        /// <summary>
+        /// 指定游戏的资源包是否已就绪
+        /// </summary>
+        public bool IsGameBundlesReady(string gameName)
+        {
+            return (_dlReadyGame == gameName && _dlReadyGame.Length > 0);
+        }
+
+#if (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL) && !UNITY_EDITOR
+        private void DownloadNextGameBundle()
+        {
+            if (_dlIndex >= _dlBundles.Count)
+            {
+                FinishGameDownload();
+                return;
+            }
+            string name = _dlBundles[_dlIndex];
+            string url = ResourceManager.Instance.AssetBundleHost + name;
+            string path = ResourceManager.GetLocalAssetBundlePath() + name;
+            HttpRequester.Instance.Download(url, path, OnGameBundleDownloaded);
+        }
+
+        private void OnGameBundleDownloaded(int code, string path)
+        {
+            if (code != 200)
+            {
+                Debug.LogError("[GameManager] 下载游戏资源失败: " + _dlGame + " index=" + _dlIndex + " code=" + code);
+                _dlGame = "";
+                return;
+            }
+            _dlIndex++;
+            DownloadNextGameBundle();
+        }
+
+        private void FinishGameDownload()
+        {
+            foreach (string ab in _dlBundles)
+                ResourceManager.Instance.UpdateLocalHash(ab);
+            ResourceManager.Instance.SaveLocalHashes();
+            GameManifest.Instance.SetGameUpdated(_dlGame);
+            _dlReadyGame = _dlGame;
+            _dlGame = "";
+            AddGameLoaded(_dlReadyGame);
+            Debug.Log("[GameManager] game bundles downloaded: " + _dlReadyGame);
+            // 下载完成后直接打开该游戏大厅（不再依赖 Lua 轮询）
+            OpenGameHall(_dlReadyGame);
+        }
+#endif
+
+        /// <summary>
+        /// 直接打开指定游戏的大厅（加载其大厅预制体并创建大厅房间）
+        /// </summary>
+        public void OpenGameHall(string gameName)
+        {
+            string prefabPath = "";
+            string bundle = "";
+            switch (gameName)
+            {
+                case "Mahjong":
+                    prefabPath = "Prefabs/Game/Mahjong/Hall";
+                    bundle = "prefabs/mahjong_main.ab";
+                    break;
+                case "NiuNiu100":
+                    prefabPath = "Prefabs/Game/NiuNiu100/Hall";
+                    bundle = "prefabs/niuniu100.ab";
+                    break;
+                case "BiJi":
+                    prefabPath = "Prefabs/Game/BiJi/Hall";
+                    bundle = "prefabs/biji.ab";
+                    break;
+                case "Lackey":
+                    prefabPath = "Prefabs/Game/Lackey/Hall";
+                    bundle = "prefabs/lackey.ab";
+                    break;
+                case "GuanDan":
+                    prefabPath = "Prefabs/Game/GuanDan/Hall";
+                    bundle = "prefabs/guandan.ab";
+                    break;
+                default:
+                    Debug.LogError("[GameManager] OpenGameHall 未知游戏: " + gameName);
+                    return;
+            }
+            UnityEngine.Object obj = ResourceManager.Instance.LoadResource(prefabPath, bundle, "Assets/NiuMa/Resources/", ".prefab");
+            if (obj == null)
+            {
+                Debug.LogError("[GameManager] 加载大厅预制体失败: " + prefabPath + " (" + bundle + ")");
+                return;
+            }
+            Debug.Log("[GameManager] 打开游戏大厅: " + gameName);
+            CreateHallRoom(gameName + "-Hall", (GameObject)obj, true);
         }
 
         private bool _debugMode = false;
@@ -28,7 +162,7 @@ namespace NiuMa
         }
 
 #if true // (UNITY_EDITOR || UNITY_STANDALONE)
-#elif false // (UNITY_ANDROID || UNITY_IOS)
+#elif false // (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         private ShareSDK _ssdk = null;
         public ShareSDK SSDK
         {
@@ -724,6 +858,10 @@ namespace NiuMa
         {
             if (string.IsNullOrEmpty(name) || prefab == null)
                 return null;
+            // 记录当前所在游戏（名字形如 "Lackey-Hall"、"Mahjong-Room"），用于过滤其他游戏的推送
+            int idx = name.IndexOf('-');
+            if (idx > 0)
+                CurrentGame = name.Substring(0, idx);
             if (hallOrRoom)
             {
                 if (_gameHall != null)
@@ -768,6 +906,7 @@ namespace NiuMa
                 return;
             GameObject.Destroy(_gameHall);
             _gameHall = null;
+            CurrentGame = "";
         }
 
         public void DestroyGameRoom()
@@ -809,7 +948,7 @@ namespace NiuMa
         {
 #if (UNITY_EDITOR || UNITY_STANDALONE)
             return true;
-#elif (UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
             if (string.IsNullOrEmpty(name))
                 return false;
 

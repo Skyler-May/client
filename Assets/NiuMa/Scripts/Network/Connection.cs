@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Collections.Generic;
 using System.IO;
@@ -9,7 +9,7 @@ using MessagePack;
 
 namespace NiuMa
 {
-    public class Connection
+    public class Connection : IConnection
     {
         // 套接字
         private Socket _socket = null;
@@ -54,7 +54,7 @@ namespace NiuMa
         private bool _sending = false;
         private Queue<SendNode> _sendingQueue = new Queue<SendNode>();
 
-        public bool IsConnected()
+        public virtual bool IsConnected()
         {
             lock (_lock)
             {
@@ -70,7 +70,7 @@ namespace NiuMa
             }
         }
 
-        public bool IsActiveClose()
+        public virtual bool IsActiveClose()
         {
             lock (_lock)
             {
@@ -102,7 +102,7 @@ namespace NiuMa
             }
         }
 
-        public void Close()
+        public virtual void Close()
         {
             if (IsActiveClose())
                 return;
@@ -119,7 +119,7 @@ namespace NiuMa
             }
         }
 
-        public void BeginConnect(string ip, int port)
+        public virtual void BeginConnect(string ip, int port)
         {
             SetActiveClose(false);
             _socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -178,7 +178,7 @@ namespace NiuMa
                 con.OnConnect(success, errMsg);
         }
 
-        public void OnConnect(bool success, string errMsg)
+        public virtual void OnConnect(bool success, string errMsg)
         {
             if (success)
             {
@@ -194,7 +194,7 @@ namespace NiuMa
             MsgManager.Instance.PushMessage(mw);
         }
 
-        public void OnDisconnect(string err)
+        public virtual void OnDisconnect(string err)
         {
             if (_socket == null)
                 return;
@@ -207,7 +207,7 @@ namespace NiuMa
             MsgManager.Instance.PushMessage(mw);
         }
 
-        public void OnConnectFailed()
+        public virtual void OnConnectFailed()
         {
             _socket = null;
         }
@@ -344,7 +344,7 @@ namespace NiuMa
             }
         }
 
-        public void SendMessage(MsgWrapper mw)
+        public virtual void SendMessage(MsgWrapper mw)
         {
             if (!IsConnected())
                 return;
@@ -380,6 +380,9 @@ namespace NiuMa
             else
                 _socket.BeginSend(node._buf, 0, node._len, SocketFlags.None, new AsyncCallback(SendCallback), this);
         }
+
+        /// <summary>TCP 不需要每帧驱动，保持空实现以满足 IConnection</summary>
+        public virtual void Update() { }
 
         public static void SendCallback(IAsyncResult ar)
         {

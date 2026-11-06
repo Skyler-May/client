@@ -146,6 +146,20 @@ function _module:Awake()
 end
 
 function _module:Start()
+    -- debug-only: ?autogame=XXX opens that game hall right after login
+    local autoGame = CS.NiuMa.GameManager.AutoGame;
+    if (autoGame ~= nil and autoGame ~= "") then
+        CS.NiuMa.GameManager.AutoGame = "";
+        local gm = CS.NiuMa.GameManager.Instance;
+        -- 先确保该游戏的资源包已下载，否则直接进大厅会加载失败
+        if (gm:IsGameBundlesReady(autoGame)) then
+            gm:OpenGameHall(autoGame);
+        else
+            self._pendingAutoGame = autoGame;
+            gm:StartGameDownload(autoGame);
+        end
+        return;
+    end
 	if (self._dlgTableList ~= nil) then
 		self._dlgTableList:Start();
 	end
@@ -221,6 +235,22 @@ function _module:PlayBackgroundMusic()
 end
 
 function _module:Update()
+    -- debug-only: 等待 autogame 的资源包下载完成后再进大厅
+    if (self._pendingAutoGame ~= nil) then
+        local gm = CS.NiuMa.GameManager.Instance;
+        if (gm:IsGameBundlesReady(self._pendingAutoGame)) then
+            -- 下载刚结束时资源清单还没刷新，等约 2 秒（120 帧）再进大厅
+            self._pendingWait = (self._pendingWait or 0) + 1;
+            if (self._pendingWait < 120) then
+                return;
+            end
+            local g = self._pendingAutoGame;
+            self._pendingAutoGame = nil;
+            self._pendingWait = nil;
+            gm:OpenGameHall(g);
+        end
+        return;
+    end
     if (self._dlgAgency ~= nil and self._dlgAgency:IsVisible()) then
 		self._dlgAgency:Update();
 	end
@@ -392,6 +422,7 @@ end
 
 function _module:OnMahjongClick()
 	local obj = CS.NiuMa.ResourceManager.Instance:LoadResource("Prefabs/Game/Mahjong/Hall", "prefabs/mahjong_main.ab", "Assets/NiuMa/Resources/", ".prefab");
+    print("[Hall] load Mahjong obj=" .. tostring(obj));
 	if (obj ~= nil) then
 		CS.NiuMa.GameManager.Instance:CreateHallRoom("Mahjong-Hall", obj, true);
 	end
@@ -399,6 +430,7 @@ end
 
 function _module:OnNiuNiu100Click()
 	local obj = CS.NiuMa.ResourceManager.Instance:LoadResource("Prefabs/Game/NiuNiu100/Hall", "prefabs/niuniu100.ab", "Assets/NiuMa/Resources/", ".prefab");
+    print("[Hall] load NiuNiu100 obj=" .. tostring(obj));
 	if (obj ~= nil) then
 		CS.NiuMa.GameManager.Instance:CreateHallRoom("NiuNiu100-Hall", obj, true);
 	end
@@ -406,6 +438,7 @@ end
 
 function _module:OnBiJiClick()
 	local obj = CS.NiuMa.ResourceManager.Instance:LoadResource("Prefabs/Game/BiJi/Hall", "prefabs/biji.ab", "Assets/NiuMa/Resources/", ".prefab");
+    print("[Hall] load BiJi obj=" .. tostring(obj));
 	if (obj ~= nil) then
 		CS.NiuMa.GameManager.Instance:CreateHallRoom("BiJi-Hall", obj, true);
 	end
@@ -413,6 +446,7 @@ end
 
 function _module:OnLackeyClick()
 	local obj = CS.NiuMa.ResourceManager.Instance:LoadResource("Prefabs/Game/Lackey/Hall", "prefabs/lackey.ab", "Assets/NiuMa/Resources/", ".prefab");
+    print("[Hall] load Lackey obj=" .. tostring(obj));
 	if (obj ~= nil) then
 		CS.NiuMa.GameManager.Instance:CreateHallRoom("Lackey-Hall", obj, true);
 	end
@@ -420,6 +454,7 @@ end
 
 function _module:OnGuanDanClick()
 	local obj = CS.NiuMa.ResourceManager.Instance:LoadResource("Prefabs/Game/GuanDan/Hall", "prefabs/guandan.ab", "Assets/NiuMa/Resources/", ".prefab");
+    print("[Hall] load GuanDan obj=" .. tostring(obj));
 	if (obj ~= nil) then
 		CS.NiuMa.GameManager.Instance:CreateHallRoom("GuanDan-Hall", obj, true);
 	end

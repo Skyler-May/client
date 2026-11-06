@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -71,7 +71,7 @@ public class Login : MonoBehaviour
 
     // 验证码uuid
     private string _uuid;
-#elif false // (UNITY_ANDROID || UNITY_IOS)
+#elif false // (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private ShareSDK _ssdk;
     private int _reqID = 0;
 #endif
@@ -83,8 +83,14 @@ public class Login : MonoBehaviour
     {
         GameManager.Instance.Login = gameObject;
 
+#if UNITY_WEBGL
+        // H5 聚合平台免登录：URL 带 mode=merchant&userData=... 时直接用平台下发的 token 进大厅
+        if (NiuMa.MerchantLaunch.TryAutoLogin(this))
+            return;
+#endif
+
         string token = null;
-#if (UNITY_EDITOR || UNITY_ANDROID || UNITY_IOS)
+#if (UNITY_EDITOR || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         token = PlayerPrefs.GetString("token");
 #endif
         if (!string.IsNullOrEmpty(token))
@@ -125,7 +131,7 @@ public class Login : MonoBehaviour
         showPC = true;
         // 获取图形验证码
         GetCaptchaCode();
-#elif false // (UNITY_ANDROID || UNITY_IOS)
+#elif false // (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         showWechat = true;
         _ssdk = gameObject.GetComponent<ShareSDK>();
         if (_ssdk != null)
@@ -150,7 +156,7 @@ public class Login : MonoBehaviour
     public void OnWechatLoginClick()
     {
 #if true // (UNITY_EDITOR || UNITY_STANDALONE)
-#elif false // (UNITY_ANDROID || UNITY_IOS)
+#elif false // (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         // 微信登陆
         if (_ssdk != null)
         {
@@ -265,7 +271,7 @@ public class Login : MonoBehaviour
         {
             LoginRespDTO dto = JsonUtility.FromJson<LoginRespDTO>(text);
             GameManager.Instance.Token = dto.token;
-#if (UNITY_EDITOR || UNITY_ANDROID || UNITY_IOS)
+#if (UNITY_EDITOR || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
             // 加密token，增强本地存储token的安全性
             string token = AesUtil.Encrypt1(dto.token);
             PlayerPrefs.SetString("token", token);
@@ -410,7 +416,7 @@ public class Login : MonoBehaviour
         _sex = 2;
     }
 
-#elif false // (UNITY_ANDROID || UNITY_IOS)
+#elif false // (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
     private void OnAuthorizeResult(int reqID, ResponseState state, PlatformType type, Hashtable data)
     {
         if (_reqID != reqID)
@@ -448,6 +454,30 @@ public class Login : MonoBehaviour
     private void GetPlayerInfo()
     {
         GameManager.Instance.AuthGet("/player/info", OnGetPlayerInfo);
+    }
+
+    /// <summary>
+    /// H5 聚合平台免登录：拿到平台下发的厂商 token，直接走正常进厅流程
+    /// （仅 WebGL 使用，由 MerchantLaunch 调用）
+    /// </summary>
+    public void OnMerchantToken(string token)
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            InitLogin();
+            return;
+        }
+        GameManager.Instance.Token = token;
+        try
+        {
+            PlayerPrefs.SetString("token", AesUtil.Encrypt1(token));
+            PlayerPrefs.Save();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning("[Merchant] 保存 token 失败: " + ex.Message);
+        }
+        GetPlayerInfo();
     }
 
     private void OnGetPlayerInfo(int code, string text)
@@ -490,7 +520,7 @@ public class Login : MonoBehaviour
         // 刷新图形验证码
         _textCode.text = "";
         GetCaptchaCode();
-#elif false // (UNITY_ANDROID || UNITY_IOS)
+#elif false // (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         if (_ssdk != null)
             _ssdk.CancelAuthorize(PlatformType.WeChat);
 #endif
@@ -505,7 +535,7 @@ public class Login : MonoBehaviour
         string resName = "Sounds/Main/bg_login";
 #if (UNITY_EDITOR || UNITY_STANDALONE)
         UnityEngine.Object obj = Resources.Load(resName);
-#elif (UNITY_ANDROID || UNITY_IOS)
+#elif (UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
         UnityEngine.Object obj = ResourceManager.Instance.LoadResource(resName, "sounds/main.ab", "Assets/NiuMa/Resources/", ".mp3");
 #endif
         AudioClip clip = obj as AudioClip;
