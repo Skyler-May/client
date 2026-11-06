@@ -1,0 +1,102 @@
+-- 描述：斗地主大厅脚本（网狐规则移植，美术后续替换）
+-- 说明：极简 UI，先打通「进入游戏 → 房间列表 → 建房/进房」链路
+local base = require 'BehaviourBase';
+local com_def = require 'Common.Defines';
+
+local _module = setmetatable({}, { __index = base });
+
+function _module:Awake()
+    local obj = self.gameObject;
+    local ui = CS.NiuMa.LuaUGUI;
+
+    local child = obj.transform:Find("RoomList");
+    if (child ~= nil) then
+        self._roomList = child.gameObject;
+        self._content = child:Find("Viewport/Content").gameObject;
+    end
+    child = obj.transform:Find("EmptyTip");
+    if (child ~= nil) then
+        self._emptyTip = child.gameObject;
+    end
+    child = obj.transform:Find("DlgCreate");
+    if (child ~= nil) then
+        self._dlgCreate = child.gameObject;
+    end
+    child = obj.transform:Find("DlgJoin");
+    if (child ~= nil) then
+        self._dlgJoin = child.gameObject;
+    end
+
+    child = obj.transform:Find("BtnBack");
+    if (child ~= nil) then
+        ui.AddBtnClick(child.gameObject, self.OnBackClick);
+    end
+    child = obj.transform:Find("BtnCreate");
+    if (child ~= nil) then
+        ui.AddBtnClick(child.gameObject, self.OnCreateClick);
+    end
+    child = obj.transform:Find("BtnJoin");
+    if (child ~= nil) then
+        ui.AddBtnClick(child.gameObject, self.OnJoinClick);
+    end
+    child = obj.transform:Find("BtnRefresh");
+    if (child ~= nil) then
+        ui.AddBtnClick(child.gameObject, self.OnRefreshClick);
+    end
+    child = obj.transform:Find("Title");
+    if (child ~= nil) then
+        local txt = child:GetComponent(typeof(CS.UnityEngine.UI.Text));
+        if (txt ~= nil) then
+            txt.text = "斗地主";
+        end
+    end
+
+    self:ShowEmptyTip(true);
+    self:RefreshRoomList();
+end
+
+function _module:ShowEmptyTip(s)
+    if (self._emptyTip ~= nil) then
+        self._emptyTip:SetActive(s);
+    end
+end
+
+-- 刷新房间列表（TODO: 接入 MsgGetHallRoomList / 现有大厅房间接口）
+function _module:RefreshRoomList()
+    local GameManager = CS.NiuMa.GameManager.Instance;
+    local gameName = GameManager.CurrentGame;
+    print("[Landlord] refresh room list, game=" .. tostring(gameName));
+    self:ShowEmptyTip(true);
+end
+
+function _module.OnBackClick()
+    local self = _module;
+    local GameManager = CS.NiuMa.GameManager.Instance;
+    GameManager:DestroyGameHall();
+end
+
+function _module.OnCreateClick()
+    local self = _module;
+    if (self._dlgCreate ~= nil) then
+        self._dlgCreate:SetActive(true);
+    end
+end
+
+function _module.OnJoinClick()
+    local self = _module;
+    if (self._dlgJoin ~= nil) then
+        self._dlgJoin:SetActive(true);
+    end
+end
+
+function _module.OnRefreshClick()
+    local self = _module;
+    self:RefreshRoomList();
+end
+
+-- 收到消息（由框架转发）
+function _module:OnMessage(msgType, msg)
+    print("[Landlord] hall message: " .. tostring(msgType));
+end
+
+return _module;

@@ -11,13 +11,13 @@ namespace NiuMa
     [LuaCallCSharp]
     public class GameManager
     {
-        /// <summary>联调用：进入大厅后自动打开的游戏名（Mahjong/GuanDan/Lackey/BiJi/NiuNiu100）</summary>
+        /// <summary>联调用：进入大厅后自动打�?的游戏名（Mahjong/GuanDan/Lackey/BiJi/NiuNiu100�?</summary>
         public static string AutoGame = "";
 
-        /// <summary>联调用：进入游戏大厅后自动进入的房间（GuanDan: beginner/moderate/advanced/master/practice）</summary>
+        /// <summary>联调用：进入游戏大厅后自动进入的房间（GuanDan: beginner/moderate/advanced/master/practice�?</summary>
         public static string AutoRoom = "";
 
-        /// <summary>当前所在的游戏（Mahjong/NiuNiu100/BiJi/Lackey/GuanDan），用于过滤其他游戏的消息</summary>
+        /// <summary>当前�?在的游戏（Mahjong/NiuNiu100/BiJi/Lackey/GuanDan），用于过滤其他游戏的消�?</summary>
         public static string CurrentGame = "";
 
         // 禁止外部创建
@@ -29,18 +29,18 @@ namespace NiuMa
             get { return _instance; }
         }
 
-        // ================= 联调用：先下载游戏资源再进大厅 =================
+        // ================= 联调用：先下载游戏资源再进大�? =================
         private string _dlGame = "";
         private string _dlReadyGame = "";
         private List<string> _dlBundles = new List<string>();        private int _dlIndex = 0;
 
         /// <summary>
-        /// 开始下载指定游戏的资源包（下载完成后 IsGameBundlesReady 返回 true）
+        /// �?始下载指定游戏的资源包（下载完成�? IsGameBundlesReady 返回 true�?
         /// </summary>
         public void StartGameDownload(string gameName)
         {
 #if UNITY_EDITOR
-            // 编辑器下资源直接可读，不需要下载
+            // 编辑器下资源直接可读，不�?要下�?
             _dlReadyGame = gameName;
 #elif (UNITY_STANDALONE || UNITY_ANDROID || UNITY_IOS || UNITY_WEBGL)
             _dlGame = gameName;
@@ -50,7 +50,7 @@ namespace NiuMa
             GameManifest.Instance.GetGameOutdatedABs(gameName, ref _dlBundles);
             if (_dlBundles.Count == 0)
             {
-                // 没有需要下载的资源包，直接打开大厅（不依赖 Lua 侧轮询）
+                // 没有�?要下载的资源包，直接打开大厅（不依赖 Lua 侧轮询）
                 _dlReadyGame = gameName;
                 _dlGame = "";
                 Debug.Log("[GameManager] no outdated bundles for " + gameName + ", open hall directly");
@@ -63,7 +63,7 @@ namespace NiuMa
         }
 
         /// <summary>
-        /// 指定游戏的资源包是否已就绪
+        /// 指定游戏的资源包是否已就�?
         /// </summary>
         public bool IsGameBundlesReady(string gameName)
         {
@@ -106,7 +106,7 @@ namespace NiuMa
             _dlGame = "";
             AddGameLoaded(_dlReadyGame);
             Debug.Log("[GameManager] game bundles downloaded: " + _dlReadyGame);
-            // 下载完成后直接打开该游戏大厅（不再依赖 Lua 轮询）
+            // 下载完成后直接打�?该游戏大厅（不再依赖 Lua 轮询�?
             OpenGameHall(_dlReadyGame);
         }
 #endif
@@ -140,6 +140,10 @@ namespace NiuMa
                     prefabPath = "Prefabs/Game/GuanDan/Hall";
                     bundle = "prefabs/guandan.ab";
                     break;
+                case "Landlord":
+                    prefabPath = "Prefabs/Game/Landlord/Hall";
+                    bundle = "prefabs/landlord.ab";
+                    break;
                 default:
                     Debug.LogError("[GameManager] OpenGameHall 未知游戏: " + gameName);
                     return;
@@ -147,7 +151,7 @@ namespace NiuMa
             UnityEngine.Object obj = ResourceManager.Instance.LoadResource(prefabPath, bundle, "Assets/NiuMa/Resources/", ".prefab");
             if (obj == null)
             {
-                Debug.LogError("[GameManager] 加载大厅预制体失败: " + prefabPath + " (" + bundle + ")");
+                Debug.LogError("[GameManager] 加载大厅预制体失�?: " + prefabPath + " (" + bundle + ")");
                 return;
             }
             Debug.Log("[GameManager] 打开游戏大厅: " + gameName);
@@ -242,7 +246,7 @@ namespace NiuMa
             set { _promptPanel = value; }
         }
 
-        // 提示对话框和文本所在AB包名
+        // 提示对话框和文本�?在AB包名
         private string _promptAssetBundle = "";
         public string PromptAssetBundle
         {
@@ -285,7 +289,7 @@ namespace NiuMa
             set { _connecting = value; }
         }
 
-        // 当前所在场地ID
+        // 当前�?在场地ID
         private string _venueId = null;
         public string VenueId
         {
@@ -346,7 +350,7 @@ namespace NiuMa
             set { _phone = value; }
         }
 
-        // 0未知，1为男性，2为女性
+        // 0未知�?1为男性，2为女�?
         private int _sex = 0;
         public int Sex
         {
@@ -386,7 +390,7 @@ namespace NiuMa
             set { _diamond = value; }
         }
 
-        // 是否为代理
+        // 是否为代�?
         private bool _isAgency = false;
         public bool IsAgency
         {
@@ -402,7 +406,7 @@ namespace NiuMa
             set { _agencyId = value; }
         }
 
-        // 玩家当前所在的地址
+        // 玩家当前�?在的地址
         private string _address = null;
         public string Address
         {
@@ -456,13 +460,13 @@ namespace NiuMa
         // 进入成功回调
         private Action _enterCallback = null;
 
-        // 上一次发送Http心跳的时间
+        // 上一次发送Http心跳的时�?
         private DateTime _timeLastHeartbeat = new DateTime();
 
         // 保存url对应的头像纹理，以免多次加载
         private Dictionary<String, Texture2D> _headTextureMap = new Dictionary<String, Texture2D>();
 
-        // 游戏大厅(注意这里要与整个App的大厅区别开来)
+        // 游戏大厅(注意这里要与整个App的大厅区别开�?)
         private GameObject _gameHall = null;
 
         // 游戏房间
@@ -471,13 +475,13 @@ namespace NiuMa
         // 当前已加载的游戏
         private List<string> _gameLoaded = new List<string>();
 
-        // 一分钟内生成的Nonce序列
+        // �?分钟内生成的Nonce序列
         private List<KeyValuePair<long, string> > _nonceSequence = new List<KeyValuePair<long, string> >();
 
         //
         private HashSet<string> _nonces = new HashSet<string>();
 
-        // 定时器列表
+        // 定时器列�?
         private LinkedList<TimerWrapper> _timers = new LinkedList<TimerWrapper>();
 
         public Texture2D GetTextureByUrl(String url)
@@ -525,7 +529,7 @@ namespace NiuMa
             _waiting.SetActive(s);
         }
 
-        // 显示或隐藏正在连接
+        // 显示或隐藏正在连�?
         [BlackList]
         public void ShowConnecting(bool s)
         {
@@ -533,7 +537,7 @@ namespace NiuMa
                 _connecting.SetActive(s);
         }
 
-        // 弹出提示对话框
+        // 弹出提示对话�?
         public void ShowPromptDialog(String strPrompt, UnityAction ok = null, UnityAction cancel = null)
         {
             if (_promptPanel == null)
@@ -765,7 +769,7 @@ namespace NiuMa
         /// <summary>
         /// 进入场地
         /// </summary>
-        /// <param name="address">服务器地址</param>
+        /// <param name="address">服务器地�?</param>
         /// <param name="venueId">场地id</param>
         /// <param name="gameType">游戏类型</param>
         /// <param name="callback">进入成功回调</param>
@@ -773,7 +777,7 @@ namespace NiuMa
         {
             if (!string.IsNullOrEmpty(_enterVenueId))
             {
-                // 当前正在进入场地，直接返回
+                // 当前正在进入场地，直接返�?
                 return;
             }
             if (string.IsNullOrEmpty(address) || string.IsNullOrEmpty(venueId))
@@ -791,7 +795,7 @@ namespace NiuMa
         }
 
         /// <summary>
-        /// 进入场地成功，执行回调
+        /// 进入场地成功，执行回�?
         /// </summary>
         /// <param name="venueId">场地id</param>
         [BlackList]
@@ -848,9 +852,9 @@ namespace NiuMa
         }
 
         /// <summary>
-        /// 创建游戏大厅或房间
+        /// 创建游戏大厅或房�?
         /// </summary>
-        /// <param name="name">大厅或房间名称</param>
+        /// <param name="name">大厅或房间名�?</param>
         /// <param name="prefab">大厅或房间Prefab</param>
         /// <param name="hallOrRoom">大厅true，房间false</param>
         /// <returns></returns>
@@ -858,7 +862,7 @@ namespace NiuMa
         {
             if (string.IsNullOrEmpty(name) || prefab == null)
                 return null;
-            // 记录当前所在游戏（名字形如 "Lackey-Hall"、"Mahjong-Room"），用于过滤其他游戏的推送
+            // 记录当前�?在游戏（名字形如 "Lackey-Hall"�?"Mahjong-Room"），用于过滤其他游戏的推�?
             int idx = name.IndexOf('-');
             if (idx > 0)
                 CurrentGame = name.Substring(0, idx);
@@ -915,7 +919,7 @@ namespace NiuMa
             _enterVenueId = null;
             NetworkManager.Instance.Close();
             ShowConnecting(false);
-            // 退出游戏后恢复默认提示对话框和提示文本
+            // �?出游戏后恢复默认提示对话框和提示文本
             PromptAssetBundle = "";
             PromptDialogPrefab = "";
             PromptTipPrefab = "";
@@ -1041,7 +1045,7 @@ namespace NiuMa
                 }
                 if (!path.Equals("/player/info") && code == 401)
                 {
-                    ShowPromptDialog("登录已失效，请重新登录", BackLogin, BackLogin);
+                    ShowPromptDialog("登录已失效，请重新登�?", BackLogin, BackLogin);
                 }
             });
         }
@@ -1064,7 +1068,7 @@ namespace NiuMa
                 }
                 if (code == 401)
                 {
-                    ShowPromptDialog("登录已失效，请重新登录", BackLogin, BackLogin);
+                    ShowPromptDialog("登录已失效，请重新登�?", BackLogin, BackLogin);
                 }
             });
         }
@@ -1077,7 +1081,7 @@ namespace NiuMa
                 return;
             TimeSpan ts = DateTime.Now - _timeLastHeartbeat;
             if (ts.TotalSeconds > 30.0) {
-                // 30秒发送一次心跳
+                // 30秒发送一次心�?
                 _timeLastHeartbeat = DateTime.Now;
                 AuthGet("/player/heartbeat", null);
             }
@@ -1088,7 +1092,7 @@ namespace NiuMa
         {
             if (_requestingSecret)
                 return;
-            // 消息签名错误，尝试更新消息密钥
+            // 消息签名错误，尝试更新消息密�?
             _requestingSecret = true;
             AuthGet("/player/message/secret", OnGetMessageSecret);
         }
@@ -1118,7 +1122,7 @@ namespace NiuMa
         {
             if (!Location || !LoginFlag)
                 return;
-            // 向后台更新玩家定位，以便获得玩家所在地址
+            // 向后台更新玩家定位，以便获得玩家�?在地�?
             JsonData data = new JsonData();
             data["latitude"] = Latitude;
             data["longitude"] = Longitude;
@@ -1169,7 +1173,7 @@ namespace NiuMa
             }
             foreach (TimerWrapper tw in tmpArray)
             {
-                // 将循环定时任务插回到链表中
+                // 将循环定时任务插回到链表�?
                 InsertTimer(tw);
             }
         }
