@@ -1,0 +1,60 @@
+-- 描述：斗地主房间条目脚本（大厅列表一行）
+local base = require 'BehaviourBase';
+local rapidjson = require('rapidjson');
+
+local _module = setmetatable({}, { __index = base });
+
+function _module.NewInstance()
+    local o = setmetatable({}, { __index = _module });
+    return o;
+end
+
+function _module:Awake()
+    local obj = self.gameObject;
+    local child = obj.transform:Find("Number");
+    if (child ~= nil) then
+        self._number = child.gameObject;
+    end
+    child = obj.transform:Find("Meta");
+    if (child ~= nil) then
+        self._meta = child.gameObject;
+    end
+    child = obj.transform:Find("BtnEnter");
+    if (child ~= nil) then
+        self._btnEnter = child.gameObject;
+        CS.NiuMa.LuaUGUI.AddBtnClick(child.gameObject, self.OnEnterClick);
+    end
+end
+
+function _module:SetEnterCallback(callback)
+    self._enterCallback = callback;
+end
+
+function _module:SetRoomItem(item)
+    self._item = item;
+    local number = tostring(item.number or "");
+    local diZhu = tostring(item.diZhu or item.baseScore or 0);
+    if (self._number ~= nil) then
+        CS.NiuMa.LuaUGUI.SetText(self._number, number);
+    end
+    if (self._meta ~= nil) then
+        CS.NiuMa.LuaUGUI.SetText(self._meta, "底注 " .. diZhu);
+    end
+end
+
+function _module.OnEnterClick()
+    local self = _module;
+    if (self._item == nil) then
+        return;
+    end
+    local gm = CS.NiuMa.GameManager.Instance;
+    -- 场地服务地址：单服部署时固定为游戏服 WS 地址，可后续改成从配置读取
+    local address = self._item.address;
+    if (address == nil or address == "") then
+        address = "127.0.0.1:9098";
+    end
+    local gameType = tonumber(self._item.gameType) or 1031;
+    gm:EnterVenue(address, tostring(self._item.venueId), gameType, self._enterCallback);
+end
+
+return _module;

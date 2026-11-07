@@ -23,6 +23,7 @@ namespace NiuMa.EditorTools
 
             BuildHall();
             BuildRoom();
+            BuildRoomItem();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -210,6 +211,46 @@ namespace NiuMa.EditorTools
             rt.gameObject.SetActive(false);
         }
 
+        private static void BuildRoomItem()
+        {
+            var root = Rect("RoomItem", null);
+            root.anchorMin = new Vector2(0, 1);
+            root.anchorMax = new Vector2(1, 1);
+            root.pivot = new Vector2(0.5f, 1);
+            root.sizeDelta = new Vector2(0, 64);
+            var bg = root.gameObject.AddComponent<Image>();
+            bg.sprite = WhiteSprite();
+            bg.color = new Color(0.10f, 0.20f, 0.16f, 0.95f);
+
+            var no = Label("Number", root, "000000", 30, Color.white);
+            var nrt = no.rectTransform;
+            nrt.anchorMin = new Vector2(0, 0.5f);
+            nrt.anchorMax = new Vector2(0, 0.5f);
+            nrt.pivot = new Vector2(0, 0.5f);
+            nrt.anchoredPosition = new Vector2(24, 0);
+            nrt.sizeDelta = new Vector2(220, 44);
+            no.alignment = TextAnchor.MiddleLeft;
+
+            var meta = Label("Meta", root, "", 22, new Color(1, 1, 1, 0.75f));
+            var mrt = meta.rectTransform;
+            mrt.anchorMin = new Vector2(0, 0.5f);
+            mrt.anchorMax = new Vector2(0, 0.5f);
+            mrt.pivot = new Vector2(0, 0.5f);
+            mrt.anchoredPosition = new Vector2(260, 0);
+            mrt.sizeDelta = new Vector2(420, 40);
+            meta.alignment = TextAnchor.MiddleLeft;
+
+            var btn = Btn("BtnEnter", root, "进入", new Color(0.82f, 0.55f, 0.13f, 1f), new Vector2(0, 0), new Vector2(140, 48));
+            var brt = btn.GetComponent<RectTransform>();
+            brt.anchorMin = new Vector2(1, 0.5f);
+            brt.anchorMax = new Vector2(1, 0.5f);
+            brt.pivot = new Vector2(1, 0.5f);
+            brt.anchoredPosition = new Vector2(-24, 0);
+
+            PrefabUtility.SaveAsPrefabAsset(root.gameObject, OutDir + "/RoomItem.prefab");
+            Object.DestroyImmediate(root.gameObject);
+            Debug.Log("[LandlordPrefabBuilder] RoomItem.prefab created");
+        }
         private static void BuildRoom()
         {
             var root = Rect("Room", null);
